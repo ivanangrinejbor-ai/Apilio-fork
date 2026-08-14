@@ -4,6 +4,7 @@ from rvc.lib.algorithm.generators.hifigan_mrf import HiFiGANMRFGenerator
 from rvc.lib.algorithm.generators.hifigan_nsf import HiFiGANNSFGenerator
 from rvc.lib.algorithm.generators.hifigan import HiFiGANGenerator
 from rvc.lib.algorithm.generators.refinegan import RefineGANGenerator
+from rvc.lib.algorithm.generators.vocos_dec import VocosDecoder
 from rvc.lib.algorithm.commons import slice_segments, rand_slice_segments
 from rvc.lib.algorithm.residuals import ResidualCouplingBlock
 from rvc.lib.algorithm.encoders import TextEncoder, PosteriorEncoder
@@ -104,6 +105,11 @@ class Synthesizer(torch.nn.Module):
                     num_mels=inter_channels,
                     checkpointing=checkpointing,
                 )
+            elif vocoder == "Vocos":
+                self.dec = VocosDecoder(
+                    in_channels=inter_channels,
+                    upsample_rates=upsample_rates,
+                )
             else:
                 self.dec = HiFiGANNSFGenerator(
                     inter_channels,
@@ -123,6 +129,11 @@ class Synthesizer(torch.nn.Module):
             elif vocoder == "RefineGAN":
                 print("RefineGAN does not support training without pitch guidance.")
                 self.dec = None
+            elif vocoder == "Vocos":
+                self.dec = VocosDecoder(
+                    in_channels=inter_channels,
+                    upsample_rates=upsample_rates,
+                )
             else:
                 self.dec = HiFiGANGenerator(
                     inter_channels,
