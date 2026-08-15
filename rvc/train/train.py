@@ -840,7 +840,7 @@ def train_and_evaluate(
                 )
                 loss_mel = fn_mel_loss(wave_mel, y_hat_mel) * config.train.c_mel
 
-            if vocoder == "Vocos":
+            if vocoder in ("Vocos", "BigVGAN"):
                 loss_sc = (
                     spectral_convergence_loss(
                         wave,
