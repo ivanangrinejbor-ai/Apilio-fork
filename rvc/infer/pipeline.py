@@ -168,13 +168,18 @@ class Pipeline:
     voice conversion using a model, and post-processing.
     """
 
-    def __init__(self, tgt_sr, config):
+    def __init__(self, tgt_sr, config, window=160):
         """
         Initializes the Pipeline class with target sampling rate and configuration parameters.
 
         Args:
             tgt_sr: The target sampling rate for the output audio.
             config: A configuration object containing various parameters for the pipeline.
+            window: Hop length of the feature frames at the 16 kHz analysis rate.
+                The default 160 yields 100 frames per second, which matches the
+                standard RVC decoders. Vocoders whose total upsampling ratio does
+                not equal tgt_sr / 100 (e.g. BigVGAN-v2 at 24 kHz) need a
+                different hop so the synthesized rate matches tgt_sr.
         """
         self.x_pad = config.x_pad
         self.x_query = config.x_query
@@ -182,7 +187,7 @@ class Pipeline:
         self.x_max = config.x_max
         self.sample_rate = 16000
         self.tgt_sr = tgt_sr
-        self.window = 160
+        self.window = window
         self.t_pad = self.sample_rate * self.x_pad
         self.t_pad_tgt = tgt_sr * self.x_pad
         self.t_pad2 = self.t_pad * 2
@@ -346,10 +351,12 @@ class Pipeline:
             )
             # adjust the length if the audio is short
             p_len = min(audio0.shape[0] // self.window, feats.shape[1])
+            feats = feats[:, :p_len, :]
             if pitch_guidance:
                 feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
                     0, 2, 1
                 )
+                feats0 = feats0[:, :p_len, :]
                 pitch, pitchf = pitch[:, :p_len], pitchf[:, :p_len].float()
                 # Pitch protection blending
                 if protect < 0.5:

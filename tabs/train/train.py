@@ -349,7 +349,7 @@ def train_tab():
                 vocoder = gr.Radio(
                     label=i18n("Vocoder"),
                     info=i18n(
-                        "Choose the vocoder for audio synthesis:\n- **HiFi-GAN**: Default option, compatible with all clients.\n- **MRF HiFi-GAN**: Higher fidelity, Applio-only.\n- **RefineGAN**: Superior audio quality, Applio-only.\n- **Vocos**: Experimental lightweight decoder, trained from scratch, Applio-only.\n- **BigVGAN**: State-of-the-art quality with anti-aliased snake activations, heavy (112M), trained from scratch, Applio-only."
+                        "Choose the vocoder for audio synthesis:\n- **HiFi-GAN**: Default option, compatible with all clients.\n- **MRF HiFi-GAN**: Higher fidelity, Applio-only.\n- **RefineGAN**: Superior audio quality, Applio-only.\n- **Vocos**: Experimental lightweight decoder, trained from scratch, Applio-only.\n- **BigVGAN**: State-of-the-art quality with anti-aliased snake activations, heavy (112M), NVIDIA v2 pretrained decoder, 24 kHz only, Applio-only."
                     ),
                     choices=["HiFi-GAN", "RefineGAN", "Vocos", "BigVGAN"],  # "MRF HiFi-GAN", ],
                     value="HiFi-GAN",
@@ -968,7 +968,13 @@ def train_tab():
                     }, {"interactive": False, "__type__": "update", "value": "HiFi-GAN"}
 
             def toggle_vocoder(vocoder):
-                if vocoder in ("HiFi-GAN", "Vocos"):
+                if vocoder == "BigVGAN":
+                    return {
+                        "choices": ["24000"],
+                        "__type__": "update",
+                        "value": "24000",
+                    }
+                elif vocoder in ("HiFi-GAN", "Vocos"):
                     return {
                         "choices": ["32000", "40000", "48000"],
                         "__type__": "update",

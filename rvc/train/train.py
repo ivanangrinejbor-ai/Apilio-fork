@@ -44,6 +44,32 @@ import rvc.lib.zluda
 from rvc.lib.algorithm import commons
 from rvc.train.process.extract_model import extract_model
 
+
+def drop_incompatible_weights(model, ckpt):
+    """Neutralize checkpoint keys whose shapes do not match the current model.
+
+    This allows pretrains trained with a different number of speakers
+    (e.g. the 109-speaker base of RVC pretrains) to be loaded into a model
+    built for a dataset with another speaker count. Mismatched keys keep
+    their randomly initialized values. All other keys are still loaded
+    strictly, so an architecture mismatch still fails loudly.
+    """
+    model_state = model.state_dict()
+    incompatible = {
+        k for k, v in ckpt.items() if k in model_state and v.shape != model_state[k].shape
+    }
+    if incompatible:
+        print(
+            f"Keeping {len(incompatible)} pretrain key(s) with mismatched shapes at "
+            f"their randomly initialized values: "
+            f"{sorted(incompatible)[:4]}{'...' if len(incompatible) > 4 else ''}"
+        )
+        ckpt = {
+            k: (model_state[k] if k in incompatible else v) for k, v in ckpt.items()
+        }
+    return ckpt
+
+
 # Parse command line arguments
 model_name = sys.argv[1]
 save_every_epoch = int(sys.argv[2])
@@ -123,6 +149,27 @@ except FileNotFoundError:
 
 config.data.training_files = os.path.join(experiment_dir, "filelist.txt")
 config.data.pitch_aug = pitch_aug
+
+# BigVGAN decoder matches NVIDIA's pretrained architecture only at 24 kHz
+# (upsample_rates [4,4,2,2,2,2] = 256x, init channel 1536). The data hop must
+# be 256 so the decoder output rate equals the 24 kHz sample rate, and the
+# segment size must stay divisible by the hop length.
+if vocoder == "BigVGAN":
+    if sample_rate != 24000:
+        print(
+            "BigVGAN is only supported at 24 kHz. "
+            f"Selected sample rate: {sample_rate}."
+        )
+        sys.exit(1)
+    print(
+        "BigVGAN 24 kHz: using NVIDIA v2 decoder architecture "
+        "(upsample_rates [4,4,2,2,2,2], initial channel 1536, hop 256)."
+    )
+    config.model.upsample_rates = [4, 4, 2, 2, 2, 2]
+    config.model.upsample_initial_channel = 1536
+    config.model.upsample_kernel_sizes = [8, 8, 4, 4, 4, 4]
+    config.data.hop_length = 256
+    config.train.segment_size = 8192
 
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = True
@@ -485,10 +532,11 @@ def run(
                 ckpt = torch.load(pretrainG, map_location="cpu", weights_only=True)[
                     "model"
                 ]
+                ckpt = drop_incompatible_weights(net_g, ckpt)
                 if hasattr(net_g, "module"):
-                    net_g.module.load_state_dict(ckpt)
+                    net_g.module.load_state_dict(ckpt, strict=True)
                 else:
-                    net_g.load_state_dict(ckpt)
+                    net_g.load_state_dict(ckpt, strict=True)
                 del ckpt
             except Exception as e:
                 print(
@@ -504,10 +552,11 @@ def run(
                 ckpt = torch.load(pretrainD, map_location="cpu", weights_only=True)[
                     "model"
                 ]
+                ckpt = drop_incompatible_weights(net_d, ckpt)
                 if hasattr(net_d, "module"):
-                    net_d.module.load_state_dict(ckpt)
+                    net_d.module.load_state_dict(ckpt, strict=True)
                 else:
-                    net_d.load_state_dict(ckpt)
+                    net_d.load_state_dict(ckpt, strict=True)
                 del ckpt
             except Exception as e:
                 print(

@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import soxr
 import time
 import torch
@@ -521,5 +522,7 @@ class VoiceConverter:
         Sets up the voice conversion pipeline instance based on the target sampling rate and configuration.
         """
         if self.cpt is not None:
-            self.vc = VC(self.tgt_sr, self.config)
+            total_upsample = math.prod(self.cpt["config"][12])
+            window = round(16000 * total_upsample / self.tgt_sr)
+            self.vc = VC(self.tgt_sr, self.config, window=window)
             self.n_spk = self.cpt["config"][-3]
