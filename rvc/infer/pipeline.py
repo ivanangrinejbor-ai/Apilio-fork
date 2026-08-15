@@ -455,8 +455,14 @@ class Pipeline:
         opt_ts = []
         if audio_pad.shape[0] > self.t_max:
             audio_sum = np.zeros_like(audio)
+            # Sum of window-shifted slices, used to find silent troughs. The
+            # explicit positive stop keeps every slice exactly len(audio):
+            # the pad adds only 2*(window//2), which is window-1 samples short
+            # when window is odd (e.g. 171 for BigVGAN-v2 24 kHz), and
+            # audio_pad[i : i - window] then yields len(audio)-1 slices that
+            # cannot be added to audio_sum.
             for i in range(self.window):
-                audio_sum += audio_pad[i : i - self.window]
+                audio_sum += audio_pad[i : len(audio) + i]
             for t in range(self.t_center, audio.shape[0], self.t_center):
                 opt_ts.append(
                     t
