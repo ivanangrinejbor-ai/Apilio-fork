@@ -185,8 +185,11 @@ class Synthesizer(torch.nn.Module):
                 torch.nn.utils.remove_weight_norm(module)
 
     def remove_weight_norm(self):
-        for module in [self.dec, self.flow, self.enc_q]:
-            self._remove_weight_norm_from(module)
+        for module in [self.dec, getattr(self, "flow", None), getattr(self, "enc_q", None)]:
+            if module is not None:
+                self._remove_weight_norm_from(module)
+        if isinstance(self.dec, BigVGANGenerator):
+            self.dec.remove_weight_norm()
 
     def __prepare_scriptable__(self):
         self.remove_weight_norm()
