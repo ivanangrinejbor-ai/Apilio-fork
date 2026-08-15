@@ -1047,8 +1047,7 @@ def train_and_evaluate(
         # Save best checkpoint when the lowest generator loss was updated this epoch
         if epoch > 1 and lowest_value["epoch"] == epoch:
             best_model_path = os.path.join(experiment_dir, f"{model_name}_best.pth")
-            if not os.path.exists(best_model_path):
-                model_add.append(best_model_path)
+            model_add.append(best_model_path)
 
         # Check completion
         early_stop = (
@@ -1095,7 +1094,9 @@ def train_and_evaluate(
         if model_add:
             ckpt = ema_g.state_dict()
             for m in model_add:
-                if not os.path.exists(m):
+                # Re-extract the best checkpoint on every new low so it tracks
+                # the current best instead of being written only once
+                if not os.path.exists(m) or os.path.basename(m).endswith("_best.pth"):
                     extract_model(
                         ckpt=ckpt,
                         sr=config.data.sample_rate,
