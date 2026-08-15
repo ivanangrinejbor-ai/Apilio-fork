@@ -1256,6 +1256,18 @@ def extract(**kwargs):
     help="Enable memory-efficient checkpointing.",
 )
 @click.option(
+    "--early-stop-epochs",
+    is_flag=True,
+    default=False,
+    help="Stop training after N epochs without improvement.",
+)
+@click.option(
+    "--pitch-aug",
+    is_flag=True,
+    default=False,
+    help="Enable pitch augmentation (±2 semitones).",
+)
+@click.option(
     "--save-every-epoch",
     required=True,
     type=click.IntRange(1, 100),

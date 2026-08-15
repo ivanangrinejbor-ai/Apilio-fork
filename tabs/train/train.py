@@ -806,7 +806,11 @@ def train_tab():
                 message = "You must agree to the Terms of Use to proceed."
                 gr.Info(message)
                 return message
-            return run_train_script(*args)
+            try:
+                return run_train_script(*args)
+            except Exception as e:
+                gr.Info(f"Training error: {str(e)[:200]}")
+                return f"Error: {str(e)[:200]}"
 
         terms_checkbox = gr.Checkbox(
             label=i18n("I agree to the terms of use"),

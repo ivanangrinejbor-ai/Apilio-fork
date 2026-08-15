@@ -29,7 +29,10 @@ def export_onnx(ckpt_path: str, output_dir: str | None = None, frames: int = 512
     if frames < 1:
         raise ValueError("frames must be >= 1")
 
-    cpt = torch.load(ckpt_path, map_location="cpu")
+    try:
+        cpt = torch.load(ckpt_path, map_location="cpu")
+    except (UnpicklingError, RuntimeError) as e:
+        raise ValueError(f"Failed to load checkpoint '{ckpt_path}': {e}')
     if "weight" not in cpt or "config" not in cpt:
         raise ValueError(f"'{ckpt_path}' is not a valid RVC checkpoint")
 

@@ -295,7 +295,7 @@ class VoiceConverter:
             .replace("trained", "added")
         )
 
-        if self.tgt_sr != resample_sr >= 16000:
+        if resample_sr >= 16000 and self.tgt_sr != resample_sr:
             self.tgt_sr = resample_sr
 
         if split_audio:
