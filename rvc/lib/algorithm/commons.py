@@ -85,17 +85,20 @@ def rand_slice_segments(x, x_lengths=None, segment_size=4):
     return ret, ids_str
 
 
-@torch.jit.script
 def fused_add_tanh_sigmoid_multiply(input_a, input_b, n_channels):
     """
     Fused add tanh sigmoid multiply operation.
+
+    Implemented with plain tensor ops instead of torch.jit.script: the
+    scripted version is JIT-compiled into a CUDA kernel via nvrtc on first
+    use under autocast, which fails on environments without a matching
+    libnvrtc-builtins (e.g. torch cu130 wheels missing the nvrtc runtime).
 
     Args:
         input_a: The first input tensor.
         input_b: The second input tensor.
         n_channels: The number of channels.
     """
-    n_channels_int = n_channels[0]
     in_act = input_a + input_b
     t_act, s_act = torch.chunk(in_act, 2, dim=1)
     t_act = torch.tanh(t_act)
