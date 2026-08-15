@@ -11,6 +11,7 @@ sys.path.append(now_dir)
 
 from assets.i18n.i18n import I18nAuto
 from core import run_tts_script
+from rvc.lib.tools.audio_effects import EFFECTS
 from tabs.inference.inference import (
     change_choices,
     create_folder_and_move_files,
@@ -260,6 +261,24 @@ def tts_tab():
                 value=0.5,
                 interactive=True,
             )
+            audio_effect = gr.Dropdown(
+                label=i18n("Audio Effect"),
+                info=i18n(
+                    "Apply a preset effect: rain, FNAF radio, white noise and 36 more."
+                ),
+                choices=EFFECTS,
+                value="None",
+                interactive=True,
+            )
+            audio_effect_intensity = gr.Slider(
+                minimum=0.0,
+                maximum=1.0,
+                step=0.05,
+                label=i18n("Effect Intensity"),
+                info=i18n("Set the intensity of the audio effect."),
+                value=0.5,
+                interactive=True,
+            )
             pitch = gr.Slider(
                 minimum=-24,
                 maximum=24,
@@ -476,6 +495,8 @@ def tts_tab():
             embedder_model,
             embedder_model_custom,
             sid,
+            audio_effect,
+            audio_effect_intensity,
         ],
         outputs=[vc_output1, vc_output2],
     )

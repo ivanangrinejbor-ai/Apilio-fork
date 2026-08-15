@@ -11,6 +11,7 @@ import torch
 
 from assets.i18n.i18n import I18nAuto
 from core import run_batch_infer_script, run_infer_script
+from rvc.lib.tools.audio_effects import EFFECTS
 from rvc.lib.utils import ensure_within_root, format_title
 from tabs.settings.sections.filter import get_filter_trigger, load_config_filter
 from tabs.settings.sections.restart import stop_infer
@@ -1033,6 +1034,26 @@ def inference_tab():
                     interactive=True,
                     visible=False,
                 )
+                audio_effect = gr.Dropdown(
+                    label=i18n("Audio Effect"),
+                    info=i18n(
+                        "Apply a preset effect: rain, FNAF radio, white noise and 36 more."
+                    ),
+                    choices=EFFECTS,
+                    value="None",
+                    interactive=True,
+                    visible=False,
+                )
+                audio_effect_intensity = gr.Slider(
+                    minimum=0.0,
+                    maximum=1.0,
+                    step=0.05,
+                    label=i18n("Effect Intensity"),
+                    info=i18n("Set the intensity of the audio effect."),
+                    value=0.5,
+                    interactive=True,
+                    visible=False,
+                )
                 with gr.Accordion(i18n("Preset Settings"), open=False):
                     with gr.Row():
                         preset_dropdown = gr.Dropdown(
@@ -1687,6 +1708,26 @@ def inference_tab():
                     interactive=True,
                     visible=False,
                 )
+                audio_effect_batch = gr.Dropdown(
+                    label=i18n("Audio Effect"),
+                    info=i18n(
+                        "Apply a preset effect: rain, FNAF radio, white noise and 36 more."
+                    ),
+                    choices=EFFECTS,
+                    value="None",
+                    interactive=True,
+                    visible=False,
+                )
+                audio_effect_intensity_batch = gr.Slider(
+                    minimum=0.0,
+                    maximum=1.0,
+                    step=0.05,
+                    label=i18n("Effect Intensity"),
+                    info=i18n("Set the intensity of the audio effect."),
+                    value=0.5,
+                    interactive=True,
+                    visible=False,
+                )
                 with gr.Accordion(i18n("Preset Settings"), open=False):
                     with gr.Row():
                         preset_dropdown = gr.Dropdown(
@@ -1902,7 +1943,7 @@ def inference_tab():
         return [gr.update(visible=checkbox) for _ in range(count)]
 
     def post_process_visible(checkbox):
-        return update_visibility(checkbox, 10)
+        return update_visibility(checkbox, 12)
 
     def reverb_visible(checkbox):
         return update_visibility(checkbox, 6)
@@ -1996,6 +2037,8 @@ def inference_tab():
             clipping,
             compressor,
             delay,
+            audio_effect,
+            audio_effect_intensity,
         ],
     )
     reverb.change(
@@ -2080,6 +2123,8 @@ def inference_tab():
             clipping_batch,
             compressor_batch,
             delay_batch,
+            audio_effect_batch,
+            audio_effect_intensity_batch,
         ],
     )
     reverb_batch.change(
@@ -2256,6 +2301,8 @@ def inference_tab():
             formant_qfrency,
             formant_timbre,
             post_process,
+            audio_effect,
+            audio_effect_intensity,
             reverb,
             pitch_shift,
             limiter,
@@ -2327,6 +2374,8 @@ def inference_tab():
             formant_qfrency_batch,
             formant_timbre_batch,
             post_process_batch,
+            audio_effect_batch,
+            audio_effect_intensity_batch,
             reverb_batch,
             pitch_shift_batch,
             limiter_batch,

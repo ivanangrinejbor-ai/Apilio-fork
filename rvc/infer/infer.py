@@ -29,6 +29,7 @@ sys.path.append(now_dir)
 
 from rvc.infer.pipeline import Pipeline as VC
 from rvc.lib.utils import load_audio_infer, load_embedding
+from rvc.lib.tools.audio_effects import apply_audio_effect
 from rvc.lib.tools.split_audio import (
     process_audio,
     process_audio_silero,
@@ -193,7 +194,16 @@ class VoiceConverter:
                 mix=kwargs.get("delay_mix", 0.5),
             )
             board.append(delay)
-        return board(audio_input, sample_rate)
+        audio_opt = board(audio_input, sample_rate)
+        audio_effect = kwargs.get("audio_effect")
+        if audio_effect and audio_effect != "None":
+            audio_opt = apply_audio_effect(
+                audio_opt,
+                sample_rate,
+                audio_effect,
+                kwargs.get("audio_effect_intensity", 0.5),
+            )
+        return audio_opt
 
     def convert_audio(
         self,
@@ -332,7 +342,9 @@ class VoiceConverter:
             if cleaned_audio is not None:
                 audio_opt = cleaned_audio
 
-        if post_process:
+        if post_process or (
+            kwargs.get("audio_effect") and kwargs.get("audio_effect") != "None"
+        ):
             audio_opt = self.post_process_audio(
                 audio_input=audio_opt,
                 sample_rate=self.tgt_sr,
