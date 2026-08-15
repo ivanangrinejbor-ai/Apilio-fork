@@ -319,6 +319,7 @@ def launch_gradio(server_name: str, server_port: int) -> None:
 
     if client_mode:
         import time
+        from rvc.infer.infer_api import app as infer_api_app
         from rvc.realtime.client import app as fastapi_app
 
         app.mount("/api/infer", infer_api_app)
@@ -326,8 +327,6 @@ def launch_gradio(server_name: str, server_port: int) -> None:
 
         while True:
             time.sleep(5)
-
-    from rvc.infer.infer_api import app as infer_api_app
 
 
 if __name__ == "__main__":

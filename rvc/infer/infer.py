@@ -28,7 +28,7 @@ now_dir = os.getcwd()
 sys.path.append(now_dir)
 
 from rvc.infer.pipeline import Pipeline as VC
-from rvc.lib.utils import load_audio_infer, load_embedding
+from rvc.lib.utils import load_audio_infer, load_embedding, remap_weight_norm_keys
 from rvc.lib.tools.audio_effects import apply_audio_effect
 from rvc.lib.tools.split_audio import (
     process_audio,
@@ -146,7 +146,7 @@ class VoiceConverter:
                 wet_level=kwargs.get("reverb_wet_level", 0.33),
                 dry_level=kwargs.get("reverb_dry_level", 0.4),
                 width=kwargs.get("reverb_width", 1.0),
-                freeze_mode=kwargs.get("reverb_freeze_mode", 0),
+                freeze_mode=bool(kwargs.get("reverb_freeze_mode", 0)),
             )
             board.append(reverb)
         if kwargs.get("pitch_shift", False):
@@ -288,16 +288,13 @@ class VoiceConverter:
             self.last_embedder_model = embedder_model
 
         file_index = (
-            index_path.strip()
+            (index_path or "")
+            .strip()
             .strip('"')
             .strip("\n")
             .strip('"')
             .strip()
-            .replace("trained", "added")
         )
-
-        if resample_sr >= 16000 and self.tgt_sr != resample_sr:
-            self.tgt_sr = resample_sr
 
         if split_audio:
             if split_audio_method == "silero":
@@ -307,6 +304,7 @@ class VoiceConverter:
             if not chunks:
                 print("No speech detected, processing the audio as a single chunk.")
                 chunks = [audio]
+                intervals = np.array([[0, len(audio)]])
             print(f"Audio split into {len(chunks)} chunks for processing.")
         else:
             chunks = []
@@ -359,6 +357,12 @@ class VoiceConverter:
                 **kwargs,
             )
 
+        if resample_sr >= 16000 and self.tgt_sr != resample_sr:
+            audio_opt = librosa.resample(
+                audio_opt, orig_sr=self.tgt_sr, target_sr=resample_sr
+            )
+            self.tgt_sr = resample_sr
+
         sf.write(audio_output_path, audio_opt, self.tgt_sr, format="WAV")
         output_path_format = audio_output_path.replace(
             ".wav", f".{export_format.lower()}"
@@ -396,9 +400,15 @@ class VoiceConverter:
                 pid_file.write(str(pid))
             start_time = time.time()
             print(f"Converting audio batch '{audio_input_paths}'...")
+            try:
+                all_files = os.listdir(audio_input_paths)
+            except OSError as error:
+                raise RuntimeError(
+                    f"Cannot list input folder '{audio_input_paths}': {error}"
+                )
             audio_files = [
                 f
-                for f in os.listdir(audio_input_paths)
+                for f in all_files
                 if f.lower().endswith(
                     (
                         "wav",
@@ -512,7 +522,9 @@ class VoiceConverter:
                 vocoder=self.vocoder,
             )
             del self.net_g.enc_q
-            self.net_g.load_state_dict(self.cpt["weight"], strict=False)
+            self.net_g.load_state_dict(
+                remap_weight_norm_keys(self.cpt["weight"]), strict=False
+            )
             self.net_g = self.net_g.to(self.config.device).float()
             self.net_g.eval()
             self.net_g.remove_weight_norm()

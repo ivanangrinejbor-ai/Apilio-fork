@@ -2,8 +2,8 @@ import os
 import sys
 import tempfile
 
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 
 now_dir = os.getcwd()
 sys.path.append(now_dir)
@@ -49,7 +49,7 @@ async def infer(
     sid: int = Form(0),
 ):
     if not os.path.isfile(model_path):
-        return {"detail": f"Model not found: {model_path}"}
+        raise HTTPException(404, f"Model not found: {model_path}")
 
     suffix = os.path.splitext(file.filename or "input.wav")[1] or ".wav"
     with tempfile.TemporaryDirectory() as tmp:
@@ -63,7 +63,7 @@ async def infer(
                 audio_input_path=input_path,
                 audio_output_path=output_path,
                 model_path=model_path,
-                index_path=index_path if index_path else None,
+                index_path=index_path,
                 pitch=pitch,
                 f0_method=f0_method,
                 index_rate=index_rate,
@@ -81,8 +81,15 @@ async def infer(
                 sid=sid,
             )
         except Exception as error:
-            return {"detail": f"Conversion failed: {error}"}
+            raise HTTPException(500, f"Conversion failed: {error}")
 
         if not os.path.exists(output_path):
-            return {"detail": "Conversion produced no output file."}
-        return FileResponse(output_path, media_type="audio/wav", filename="output.wav")
+            raise HTTPException(500, "Conversion produced no output file.")
+
+        with open(output_path, "rb") as f:
+            audio_bytes = f.read()
+    return Response(
+        content=audio_bytes,
+        media_type="audio/wav",
+        headers={"Content-Disposition": f'attachment; filename="output.wav"'},
+    )

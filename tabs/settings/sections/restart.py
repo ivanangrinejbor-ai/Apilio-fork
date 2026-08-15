@@ -56,11 +56,23 @@ def stop_infer():
             pids = [int(pid) for pid in pid_file.readlines() if pid.strip()]
 
         for pid in pids:
+            if pid == os.getpid():
+                # Inference runs in-process in this fork, so the recorded PID is
+                # the Applio server itself; killing it would kill the whole app.
+                print("Stop Convert: refusing to kill the running Applio process itself.")
+                continue
             try:
-                parent = psutil.Process(pid)
-                for child in parent.children(recursive=True):
+                proc = psutil.Process(pid)
+                try:
+                    cmdline = " ".join(proc.cmdline() or []).lower()
+                except Exception:
+                    cmdline = ""
+                if "python" not in cmdline and "applio" not in cmdline:
+                    print(f"Stop Convert: skipping PID {pid} (not a python process).")
+                    continue
+                for child in proc.children(recursive=True):
                     child.kill()
-                parent.kill()
+                proc.kill()
             except psutil.NoSuchProcess:
                 pass
             except Exception:

@@ -440,7 +440,7 @@ def tts_tab():
     refresh_button.click(
         fn=change_choices,
         inputs=[model_file],
-        outputs=[model_file, index_file, sid, sid],
+        outputs=[model_file, index_file, sid, sid, sid],
     ).then(
         fn=filter_dropdowns,
         inputs=[filter_box_tts],

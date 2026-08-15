@@ -41,6 +41,7 @@ from rvc.train.utils import (
     update_ema,
     unwrap_module,
 )
+from rvc.lib.utils import remap_weight_norm_keys
 
 # Zluda hijack
 import rvc.lib.zluda
@@ -314,6 +315,14 @@ def main():
         for i in range(n_gpus):
             children[i].join()
 
+        # Propagate real failures from the training processes. Exit code
+        # 2333333 is the "finished" sentinel used by the training loop.
+        exit_codes = [c.exitcode for c in children]
+        if any(code not in (0, 2333333) for code in exit_codes):
+            failed = [code for code in exit_codes if code not in (0, 2333333)]
+            print(f"Training subprocess failed with exit code(s): {failed}")
+            sys.exit(failed[0])
+
     if cleanup:
         print("Removing files from the prior training attempt...")
 
@@ -548,6 +557,7 @@ def run(
                 ckpt = torch.load(pretrainG, map_location="cpu", weights_only=True)[
                     "model"
                 ]
+                ckpt = remap_weight_norm_keys(ckpt)
                 ckpt = drop_incompatible_weights(net_g, ckpt)
                 if hasattr(net_g, "module"):
                     net_g.module.load_state_dict(ckpt, strict=True)
@@ -568,6 +578,7 @@ def run(
                 ckpt = torch.load(pretrainD, map_location="cpu", weights_only=True)[
                     "model"
                 ]
+                ckpt = remap_weight_norm_keys(ckpt)
                 ckpt = drop_incompatible_weights(net_d, ckpt)
                 if hasattr(net_d, "module"):
                     net_d.module.load_state_dict(ckpt, strict=True)
@@ -586,6 +597,25 @@ def run(
     ema_g = build_ema(unwrap_module(net_g))
     if rank == 0:
         print(f"EMA generator enabled (decay {getattr(config.train, 'ema_decay', 0.999)}).")
+
+    # On resume, restore the EMA from the last best checkpoint so the moving
+    # average does not restart from the raw (worse) loaded weights.
+    if epoch_str > 1:
+        ema_best_path = os.path.join(experiment_dir, f"{model_name}_best.pth")
+        if os.path.exists(ema_best_path):
+            try:
+                ema_best_ckpt = torch.load(
+                    ema_best_path, map_location="cpu", weights_only=True
+                )
+                ema_g.load_state_dict(
+                    remap_weight_norm_keys(ema_best_ckpt["weight"]), strict=True
+                )
+                del ema_best_ckpt
+                if rank == 0:
+                    print("EMA resumed from the best checkpoint state.")
+            except Exception as e:
+                if rank == 0:
+                    print(f"Could not resume EMA from best checkpoint: {e}")
 
     # Initialize schedulers
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(
@@ -1045,7 +1075,7 @@ def train_and_evaluate(
                 )
 
         # Save best checkpoint when the lowest generator loss was updated this epoch
-        if epoch > 1 and lowest_value["epoch"] == epoch:
+        if lowest_value["epoch"] == epoch:
             best_model_path = os.path.join(experiment_dir, f"{model_name}_best.pth")
             model_add.append(best_model_path)
 
@@ -1075,17 +1105,28 @@ def train_and_evaluate(
                 f"Early stopping triggered: no improvement for {early_stop_epochs} epochs "
                 f"(lowest generator loss {lowest_value_rounded} at epoch {lowest_value['epoch']})."
             )
-            # Final model is the best checkpoint
             model_add.append(
                 os.path.join(
                     experiment_dir, f"{model_name}_{epoch}e_{global_step}s.pth"
                 )
             )
-            if lowest_value["epoch"] == epoch:
-                model_add.append(
-                    os.path.join(experiment_dir, f"{model_name}_best.pth")
-                )
             done = True
+            # The final model must come from the best checkpoint, not from the
+            # current (worse) EMA state; swap the best weights into ema_g so the
+            # extraction below writes the best model under the final name.
+            best_model_path = os.path.join(experiment_dir, f"{model_name}_best.pth")
+            if os.path.exists(best_model_path):
+                try:
+                    best_ckpt = torch.load(
+                        best_model_path, map_location="cpu", weights_only=True
+                    )
+                    ema_g.load_state_dict(
+                        remap_weight_norm_keys(best_ckpt["weight"]), strict=True
+                    )
+                except Exception as e:
+                    print(f"Could not restore best weights for the final model: {e}")
+            else:
+                print("No best checkpoint found; final model uses current weights.")
 
         # Clean-up old best epochs
         for m in model_del:
@@ -1123,7 +1164,16 @@ def train_and_evaluate(
             with open(pid_file_path, "w") as pid_file:
                 pid_data.pop("process_pids", None)
                 json.dump(pid_data, pid_file, indent=4)
-            os._exit(2333333)
+
+    # Synchronize all ranks before exiting so the parent process does not
+    # deadlock waiting for non-rank-0 processes (DDP at >1 GPU).
+    if done:
+        if n_gpus > 1 and dist.is_initialized():
+            try:
+                dist.barrier()
+            except Exception as e:
+                print(f"Final barrier failed: {e}")
+        os._exit(2333333)
 
         with torch.no_grad():
             torch.cuda.empty_cache()

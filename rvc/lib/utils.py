@@ -32,6 +32,25 @@ base_path = os.path.join(now_dir, "rvc", "models", "formant", "stftpitchshift")
 stft = base_path + ".exe" if sys.platform == "win32" else base_path
 
 
+def remap_weight_norm_keys(state_dict):
+    """
+    Convert legacy weight_norm keys (weight_g/weight_v) to the current
+    parametrization keys (.parametrizations.weight.original0/original1).
+
+    RVC-ecosystem checkpoints (official pretrains, extracted trained models,
+    blender outputs) store the legacy keys; the Synthesizer builds weight-norm
+    layers with torch parametrizations. Loading legacy keys without remapping
+    silently drops every weight-norm tensor (strict=False), leaving those
+    layers random and producing garbage audio.
+    """
+    return {
+        k.replace(".weight_v", ".parametrizations.weight.original1").replace(
+            ".weight_g", ".parametrizations.weight.original0"
+        ): v
+        for k, v in state_dict.items()
+    }
+
+
 class HubertModelWithFinalProj(HubertModel):
     def __init__(self, config):
         super().__init__(config)

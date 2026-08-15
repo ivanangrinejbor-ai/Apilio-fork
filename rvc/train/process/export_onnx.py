@@ -8,7 +8,7 @@ now_dir = os.getcwd()
 sys.path.append(now_dir)
 
 from rvc.lib.algorithm.synthesizers import Synthesizer
-from rvc.lib.utils import validate_ui_path
+from rvc.lib.utils import validate_ui_path, remap_weight_norm_keys
 
 
 class _InferWrapper(torch.nn.Module):
@@ -50,7 +50,9 @@ def export_onnx(ckpt_path: str, output_dir: str | None = None, frames: int = 512
         vocoder=vocoder,
     )
     del net_g.enc_q
-    net_g.load_state_dict(cpt["weight"], strict=False)
+    net_g.load_state_dict(
+        remap_weight_norm_keys(cpt["weight"]), strict=False
+    )
     net_g.eval()
 
     if output_dir is None:

@@ -16,7 +16,11 @@ from rvc.configs.config import Config
 from rvc.infer.pipeline import Autotune
 from rvc.lib.algorithm.synthesizers import Synthesizer
 from rvc.lib.predictors.f0 import FCPE, RMVPE
-from rvc.lib.utils import load_embedding, HubertModelWithFinalProj
+from rvc.lib.utils import (
+    load_embedding,
+    HubertModelWithFinalProj,
+    remap_weight_norm_keys,
+)
 
 
 class RealtimeVoiceConverter:
@@ -72,7 +76,9 @@ class RealtimeVoiceConverter:
                 vocoder=self.vocoder,
             )
 
-            self.net_g.load_state_dict(self.cpt["weight"], strict=False)
+            self.net_g.load_state_dict(
+                remap_weight_norm_keys(self.cpt["weight"]), strict=False
+            )
             strip_parametrizations(self.net_g)
             self.net_g = self.net_g.to(self.config.device).to(self.dtype)
             self.net_g.eval()

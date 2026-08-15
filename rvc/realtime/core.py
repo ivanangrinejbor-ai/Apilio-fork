@@ -180,7 +180,7 @@ class Realtime:
                 wet_level=kwargs.get("reverb_wet_level", 0.33),
                 dry_level=kwargs.get("reverb_dry_level", 0.4),
                 width=kwargs.get("reverb_width", 1.0),
-                freeze_mode=kwargs.get("reverb_freeze_mode", 0),
+                freeze_mode=bool(kwargs.get("reverb_freeze_mode", 0)),
             )
             board.append(reverb)
         if kwargs.get("pitch_shift", False):

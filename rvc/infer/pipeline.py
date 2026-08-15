@@ -50,6 +50,13 @@ class AudioProcessor:
             rate: The blending rate between the source and target RMS levels.
         """
         # Calculate RMS of both audio data
+        if (
+            source_audio is None
+            or target_audio is None
+            or len(source_audio) == 0
+            or len(target_audio) == 0
+        ):
+            return target_audio
         rms1 = librosa.feature.rms(
             y=source_audio,
             frame_length=source_rate // 2 * 2,
