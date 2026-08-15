@@ -75,7 +75,7 @@ bf16_adamw = False
 disc_version = "v2"
 c_sc = 10.0
 
-if vocoder == "RefineGAN":
+if vocoder in ("RefineGAN", "BigVGAN"):
     disc_version = "v3"
     multiscale_mel_loss = True
 elif vocoder == "Vocos":

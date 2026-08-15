@@ -2,6 +2,7 @@ import torch
 from typing import Optional
 from rvc.lib.algorithm.generators.hifigan_mrf import HiFiGANMRFGenerator
 from rvc.lib.algorithm.generators.hifigan_nsf import HiFiGANNSFGenerator
+from rvc.lib.algorithm.generators.bigvgan import BigVGANGenerator
 from rvc.lib.algorithm.generators.hifigan import HiFiGANGenerator
 from rvc.lib.algorithm.generators.refinegan import RefineGANGenerator
 from rvc.lib.algorithm.generators.vocos_dec import VocosDecoder
@@ -110,6 +111,18 @@ class Synthesizer(torch.nn.Module):
                     in_channels=inter_channels,
                     upsample_rates=upsample_rates,
                 )
+            elif vocoder == "BigVGAN":
+                self.dec = BigVGANGenerator(
+                    in_channel=inter_channels,
+                    upsample_initial_channel=upsample_initial_channel,
+                    upsample_rates=upsample_rates,
+                    upsample_kernel_sizes=upsample_kernel_sizes,
+                    resblock_kernel_sizes=resblock_kernel_sizes,
+                    resblock_dilations=resblock_dilation_sizes,
+                    gin_channels=gin_channels,
+                    sample_rate=sr,
+                    harmonic_num=0,
+                )
             else:
                 self.dec = HiFiGANNSFGenerator(
                     inter_channels,
@@ -134,6 +147,9 @@ class Synthesizer(torch.nn.Module):
                     in_channels=inter_channels,
                     upsample_rates=upsample_rates,
                 )
+            elif vocoder == "BigVGAN":
+                print("BigVGAN does not support training without pitch guidance.")
+                self.dec = None
             else:
                 self.dec = HiFiGANGenerator(
                     inter_channels,

@@ -14,7 +14,12 @@ from core import (
     run_prerequisites_script,
     run_train_script,
 )
-from rvc.configs.config import get_gpu_info, get_number_of_gpus, max_vram_gpu
+from rvc.configs.config import (
+    get_gpu_count,
+    get_gpu_info,
+    get_number_of_gpus,
+    max_vram_gpu,
+)
 from rvc.lib.utils import format_title
 from tabs.settings.sections.restart import stop_train
 
@@ -343,9 +348,9 @@ def train_tab():
                 vocoder = gr.Radio(
                     label=i18n("Vocoder"),
                     info=i18n(
-                        "Choose the vocoder for audio synthesis:\n- **HiFi-GAN**: Default option, compatible with all clients.\n- **MRF HiFi-GAN**: Higher fidelity, Applio-only.\n- **RefineGAN**: Superior audio quality, Applio-only.\n- **Vocos**: Experimental lightweight decoder, trained from scratch, Applio-only."
+                        "Choose the vocoder for audio synthesis:\n- **HiFi-GAN**: Default option, compatible with all clients.\n- **MRF HiFi-GAN**: Higher fidelity, Applio-only.\n- **RefineGAN**: Superior audio quality, Applio-only.\n- **Vocos**: Experimental lightweight decoder, trained from scratch, Applio-only.\n- **BigVGAN**: State-of-the-art quality with anti-aliased snake activations, heavy (112M), trained from scratch, Applio-only."
                     ),
-                    choices=["HiFi-GAN", "RefineGAN", "Vocos"],  # "MRF HiFi-GAN", ],
+                    choices=["HiFi-GAN", "RefineGAN", "Vocos", "BigVGAN"],  # "MRF HiFi-GAN", ],
                     value="HiFi-GAN",
                     interactive=True,
                     visible=True,
@@ -377,6 +382,27 @@ def train_tab():
                         placeholder=i18n("0 to ∞ separated by -"),
                         value=str(get_number_of_gpus()),
                         interactive=True,
+                    )
+                    gpu_count = get_gpu_count()
+                    multi_gpu_toggle = gr.Checkbox(
+                        label=(
+                            i18n("Use 2 GPUs")
+                            if gpu_count == 2
+                            else i18n("Use All GPUs")
+                        ),
+                        info=i18n(
+                            "When enabled, the model is trained on all available GPUs (e.g. 0-1). When disabled, only GPU 0 is used."
+                        ),
+                        value=gpu_count >= 2,
+                        visible=gpu_count >= 2,
+                        interactive=True,
+                    )
+                    multi_gpu_toggle.change(
+                        fn=lambda use_all: (
+                            str(get_number_of_gpus()) if use_all else "0"
+                        ),
+                        inputs=[multi_gpu_toggle],
+                        outputs=[gpu],
                     )
                     gr.Textbox(
                         label=i18n("GPU Information"),

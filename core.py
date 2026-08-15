@@ -473,6 +473,21 @@ def run_preprocess_script(
 
 
 # Extract
+def resolve_gpu_setting(gpu: str, multi_gpu: bool) -> str:
+    if not multi_gpu:
+        return gpu
+    try:
+        import torch
+    except ImportError:
+        return gpu
+    if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
+        print(
+            "Multi-GPU requested, but fewer than 2 GPUs were detected. Falling back to GPU 0."
+        )
+        return "0"
+    return "-".join(str(i) for i in range(torch.cuda.device_count()))
+
+
 def run_extract_script(
     model_name: str,
     f0_method: str,
@@ -1131,6 +1146,12 @@ def preprocess(**kwargs):
 )
 @click.option("--gpu", type=str, default="-", help="GPU device to use (e.g. '0').")
 @click.option(
+    "--multi-gpu",
+    is_flag=True,
+    default=False,
+    help="Use all available GPUs (e.g. '0-1') instead of a single GPU.",
+)
+@click.option(
     "--sample-rate",
     required=True,
     type=click.Choice(["32000", "40000", "44100", "48000"]),
@@ -1172,7 +1193,7 @@ def extract(**kwargs):
         model_name=kwargs["model_name"],
         f0_method=kwargs["f0_method"],
         cpu_cores=kwargs["cpu_cores"],
-        gpu=kwargs["gpu"],
+        gpu=resolve_gpu_setting(kwargs["gpu"], kwargs["multi_gpu"]),
         sample_rate=kwargs["sample_rate"],
         embedder_model=kwargs["embedder_model"],
         embedder_model_custom=kwargs["embedder_model_custom"],
@@ -1185,7 +1206,7 @@ def extract(**kwargs):
 @click.option("--model-name", required=True, help="Name of the model to train.")
 @click.option(
     "--vocoder",
-    type=click.Choice(["HiFi-GAN", "MRF HiFi-GAN", "RefineGAN", "Vocos"]),
+    type=click.Choice(["HiFi-GAN", "MRF HiFi-GAN", "RefineGAN", "Vocos", "BigVGAN"]),
     default="HiFi-GAN",
     help="Vocoder to use.",
 )
@@ -1229,6 +1250,12 @@ def extract(**kwargs):
     "--batch-size", type=click.IntRange(1, 50), default=8, help="Training batch size."
 )
 @click.option("--gpu", type=str, default="0", help="GPU device to use.")
+@click.option(
+    "--multi-gpu",
+    is_flag=True,
+    default=False,
+    help="Train on all available GPUs (e.g. '0-1') instead of a single GPU.",
+)
 @click.option(
     "--pretrained/--no-pretrained",
     default=True,
@@ -1274,7 +1301,7 @@ def train(**kwargs):
         total_epoch=kwargs["total_epoch"],
         sample_rate=int(kwargs["sample_rate"]),
         batch_size=kwargs["batch_size"],
-        gpu=kwargs["gpu"],
+        gpu=resolve_gpu_setting(kwargs["gpu"], kwargs["multi_gpu"]),
         pretrained=kwargs["pretrained"],
         cleanup=kwargs["cleanup"],
         index_algorithm=kwargs["index_algorithm"],
