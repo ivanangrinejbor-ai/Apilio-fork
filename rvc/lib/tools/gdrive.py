@@ -61,6 +61,7 @@ def install_rclone():
                 ],
                 capture_output=True,
                 text=True,
+                timeout=600,
             )
             if proc.returncode == 0:
                 return True, "rclone installed. Restart the app so it finds rclone."
@@ -70,19 +71,52 @@ def install_rclone():
                 "rclone is not installed. Install it from https://rclone.org/downloads/ "
                 "and restart the app."
             )
+
+    # Linux/macOS: download the official binary directly (no sudo needed,
+    # works as root on Kaggle) and fall back to the install script.
+    import tempfile
+    import urllib.request
+    import zipfile
+
+    if sys.platform == "darwin":
+        url = "https://downloads.rclone.org/rclone-current-osx-amd64.zip"
+    else:
+        url = "https://downloads.rclone.org/rclone-current-linux-amd64.zip"
     try:
-        proc = subprocess.run(
-            "curl https://rclone.org/install.sh | sudo bash",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
+        zip_path = os.path.join(tempfile.gettempdir(), "rclone-current.zip")
+        urllib.request.urlretrieve(url, zip_path)
+        with zipfile.ZipFile(zip_path) as archive:
+            member = next(
+                name for name in archive.namelist() if name.endswith("/rclone")
+            )
+            data = archive.read(member)
+        target = "/usr/local/bin/rclone"
+        with open(target, "wb") as f:
+            f.write(data)
+        os.chmod(target, 0o755)
+        if rclone_exe():
+            return True, "rclone installed to /usr/local/bin."
+        return False, "rclone downloaded but the binary is not on PATH. Restart the app."
+    except Exception as error:
+        install_script_error = None
+        try:
+            proc = subprocess.run(
+                "curl -L https://rclone.org/install.sh | bash",
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if proc.returncode == 0 and rclone_exe():
+                return True, "rclone installed via install script."
+            install_script_error = proc.stderr.strip()[:200]
+        except Exception as script_error:
+            install_script_error = str(script_error)
+        return (
+            False,
+            "Could not install rclone (direct download failed: "
+            + f"{error}; install script: {install_script_error})",
         )
-        if proc.returncode == 0:
-            return True, "rclone installed."
-        return False, f"Auto-install failed: {proc.stderr.strip()[:200]}"
-    except Exception as e:
-        return False, f"Auto-install failed: {e}"
 
 
 def check_connection(remote=RCLONE_REMOTE):
@@ -123,6 +157,17 @@ def begin_connect(remote=RCLONE_REMOTE):
         exe = rclone_exe()
         if not exe:
             return "", "rclone install finished but the binary was not found. Restart the app."
+    try:
+        version = subprocess.run(
+            [exe, "--version"], capture_output=True, text=True, timeout=15
+        )
+        if version.returncode != 0:
+            return "", (
+                "rclone is installed but broken ('rclone --version' failed: "
+                f"{version.stderr.strip()[:150]}). Delete it and click Connect again."
+            )
+    except Exception as error:
+        return "", f"rclone --version failed: {error}"
     if remote_configured(remote):
         cmd = [exe, "-q", "config", "reconnect", remote + ":"]
     else:
@@ -147,21 +192,31 @@ def begin_connect(remote=RCLONE_REMOTE):
                 "Open the URL in your browser, log in with full access to your Google "
                 "Drive, copy the verification code, paste it below and press 'Confirm Code'."
             )
-        if "auto config" in text.lower() and not _connect_replied:
+        if not _connect_replied:
+            lowered = text.lower()
             try:
-                _connect_proc.stdin.write(b"n\n")
-                _connect_proc.stdin.flush()
-                _connect_replied = True
+                if "auto config" in lowered:
+                    _connect_proc.stdin.write(b"n\n")
+                    _connect_proc.stdin.flush()
+                    _connect_replied = True
+                elif "press enter" in lowered:
+                    _connect_proc.stdin.write(b"\n")
+                    _connect_proc.stdin.flush()
+                    _connect_replied = True
             except Exception:
                 pass
         if _connect_proc.poll() is not None:
             break
         time.sleep(0.2)
+    rc = _connect_proc.poll() if _connect_proc else None
     try:
         _connect_proc.kill()
     except Exception:
         pass
-    return "", "Could not get the Google authorization URL: " + _text(buf)[-300:]
+    detail = _text(buf)[-500:]
+    if not detail.strip():
+        detail = "(rclone produced no output)"
+    return "", f"Could not get the Google authorization URL (rclone exited with code {rc}): {detail}"
 
 
 def finish_connect(code, remote=RCLONE_REMOTE):
