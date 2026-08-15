@@ -288,12 +288,7 @@ class VoiceConverter:
             self.last_embedder_model = embedder_model
 
         file_index = (
-            (index_path or "")
-            .strip()
-            .strip('"')
-            .strip("\n")
-            .strip('"')
-            .strip()
+            (index_path or "").strip().strip('"').strip("\n").strip('"').strip()
         )
 
         if split_audio:

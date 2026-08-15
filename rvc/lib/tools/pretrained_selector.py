@@ -1,5 +1,4 @@
 import os
-import sys
 
 # RVC v2 base pretrain providing the pretrained front-end (enc_p/enc_q/flow/emb_g)
 # merged into decoder-only vocoder pretrains (BigVGAN, Vocos). The 32 kHz base
@@ -113,7 +112,9 @@ def _merge_base_encoder_flow(path_g):
     try:
         base_path = hf_hub_download(BASE_PRETRAIN_REPO, BASE_PRETRAIN_FILE)
     except (SystemExit, Exception) as error:
-        print(f"Failed to download the RVC base pretrain (front-end stays random): {error}")
+        print(
+            f"Failed to download the RVC base pretrain (front-end stays random): {error}"
+        )
         return
 
     try:
@@ -138,7 +139,9 @@ def _merge_base_encoder_flow(path_g):
 
         for prefix in ("enc_p.", "enc_q.", "flow.", "emb_g."):
             if not any(k.startswith(prefix) for k in kept):
-                print(f"Base pretrain has no {prefix}* weights; front-end stays random.")
+                print(
+                    f"Base pretrain has no {prefix}* weights; front-end stays random."
+                )
                 return
 
         torch.save(converted, path_g)
@@ -172,7 +175,9 @@ def _auto_download_convert(vocoder, path_g, path_d):
 
     try:
         if vocoder == "BigVGAN" and not os.path.exists(path_g):
-            print("BigVGAN 24 kHz pretrain not found, converting the NVIDIA checkpoint...")
+            print(
+                "BigVGAN 24 kHz pretrain not found, converting the NVIDIA checkpoint..."
+            )
             source = hf_hub_download(
                 "nvidia/bigvgan_v2_24khz_100band_256x", "bigvgan_generator.pt"
             )
@@ -181,7 +186,9 @@ def _auto_download_convert(vocoder, path_g, path_d):
             convert(source, path_g, spk_embed_dim=109)
             _merge_base_encoder_flow(path_g)
         elif vocoder == "Vocos" and not os.path.exists(path_g):
-            print("Vocos 24 kHz pretrain not found, converting the charactr checkpoint...")
+            print(
+                "Vocos 24 kHz pretrain not found, converting the charactr checkpoint..."
+            )
             source = hf_hub_download("charactr/vocos-mel-24khz", "pytorch_model.bin")
             from rvc.lib.tools.convert_vocos import convert
 

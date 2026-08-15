@@ -23,7 +23,9 @@ class _InferWrapper(torch.nn.Module):
         return self.net_g.infer(phone, phone_lengths, None, None, sid, None)
 
 
-def export_onnx(ckpt_path: str, output_dir: str | None = None, frames: int = 512) -> str:
+def export_onnx(
+    ckpt_path: str, output_dir: str | None = None, frames: int = 512
+) -> str:
     ckpt_path = validate_ui_path(ckpt_path)
     if not os.path.exists(ckpt_path):
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
@@ -50,9 +52,7 @@ def export_onnx(ckpt_path: str, output_dir: str | None = None, frames: int = 512
         vocoder=vocoder,
     )
     del net_g.enc_q
-    net_g.load_state_dict(
-        remap_weight_norm_keys(cpt["weight"]), strict=False
-    )
+    net_g.load_state_dict(remap_weight_norm_keys(cpt["weight"]), strict=False)
     net_g.eval()
 
     if output_dir is None:

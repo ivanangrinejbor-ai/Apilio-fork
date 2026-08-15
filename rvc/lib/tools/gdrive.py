@@ -96,7 +96,10 @@ def install_rclone():
         os.chmod(target, 0o755)
         if rclone_exe():
             return True, "rclone installed to /usr/local/bin."
-        return False, "rclone downloaded but the binary is not on PATH. Restart the app."
+        return (
+            False,
+            "rclone downloaded but the binary is not on PATH. Restart the app.",
+        )
     except Exception as error:
         install_script_error = None
         try:
@@ -123,7 +126,10 @@ def check_connection(remote=RCLONE_REMOTE):
     """Return (ok, message) by listing the remote root."""
     exe = rclone_exe()
     if not exe:
-        return False, "rclone is not installed. Click 'Connect Google Drive' to install it."
+        return (
+            False,
+            "rclone is not installed. Click 'Connect Google Drive' to install it.",
+        )
     if not remote_configured(remote):
         return False, (
             "Google Drive is not connected. Click 'Connect Google Drive' to log in "
@@ -168,7 +174,10 @@ def begin_connect(remote=RCLONE_REMOTE, client_id="", client_secret=""):
             return "", msg
         exe = rclone_exe()
         if not exe:
-            return "", "rclone install finished but the binary was not found. Restart the app."
+            return (
+                "",
+                "rclone install finished but the binary was not found. Restart the app.",
+            )
     try:
         version = subprocess.run(
             [exe, "--version"], capture_output=True, text=True, timeout=15
@@ -215,14 +224,20 @@ def begin_connect(remote=RCLONE_REMOTE, client_id="", client_secret=""):
         )
         _connect_replied = False
     buf = []
-    thread = threading.Thread(target=_pump_stdout, args=(_connect_proc, buf), daemon=True)
+    thread = threading.Thread(
+        target=_pump_stdout, args=(_connect_proc, buf), daemon=True
+    )
     thread.start()
     deadline = time.time() + 90
     while time.time() < deadline:
         text = _text(buf)
         if "accounts.google.com" in text:
             url = next(
-                (line.strip() for line in text.splitlines() if "accounts.google.com" in line),
+                (
+                    line.strip()
+                    for line in text.splitlines()
+                    if "accounts.google.com" in line
+                ),
                 "",
             )
             hint = (
@@ -261,7 +276,10 @@ def begin_connect(remote=RCLONE_REMOTE, client_id="", client_secret=""):
     detail = _text(buf)[-500:]
     if not detail.strip():
         detail = "(rclone produced no output)"
-    return "", f"Could not get the Google authorization URL (rclone exited with code {rc}): {detail}"
+    return (
+        "",
+        f"Could not get the Google authorization URL (rclone exited with code {rc}): {detail}",
+    )
 
 
 def finish_connect(code, remote=RCLONE_REMOTE):
@@ -316,7 +334,10 @@ def upload_files(paths, remote=RCLONE_REMOTE, folder=DEFAULT_FOLDER):
             failed.append(f"{os.path.basename(path)}: {proc.stderr.strip()[:150]}")
     if failed:
         return False, "Upload failed for: " + "; ".join(failed)
-    return True, f"Uploaded {len([p for p in paths if os.path.exists(p)])} file(s) to {dest}"
+    return (
+        True,
+        f"Uploaded {len([p for p in paths if os.path.exists(p)])} file(s) to {dest}",
+    )
 
 
 def upload_async(paths, remote=RCLONE_REMOTE, folder=None, wait=False):
@@ -337,9 +358,16 @@ def upload_async(paths, remote=RCLONE_REMOTE, folder=None, wait=False):
             continue
         target = f"{dest}/{os.path.basename(path)}"
         if wait:
-            proc = subprocess.run([exe, "copyto", path, target], capture_output=True, text=True, timeout=300)
+            proc = subprocess.run(
+                [exe, "copyto", path, target],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
             if proc.returncode != 0:
-                print(f"Google Drive upload failed for {path}: {proc.stderr.strip()[:150]}")
+                print(
+                    f"Google Drive upload failed for {path}: {proc.stderr.strip()[:150]}"
+                )
         else:
             subprocess.Popen(
                 [exe, "copyto", path, target],

@@ -157,9 +157,7 @@ class ISTFT(nn.Module):
         ifft = ifft * self.window.to(ifft.dtype)[None, :, None]
 
         output_size = (T - 1) * self.hop_length + self.win_length
-        y = torch.zeros(
-            B, output_size, dtype=ifft.dtype, device=ifft.device
-        )
+        y = torch.zeros(B, output_size, dtype=ifft.dtype, device=ifft.device)
         for t in range(T):
             start = t * self.hop_length
             y[:, start : start + self.win_length] += ifft[:, :, t]

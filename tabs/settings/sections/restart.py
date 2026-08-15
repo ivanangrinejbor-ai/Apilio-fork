@@ -59,7 +59,9 @@ def stop_infer():
             if pid == os.getpid():
                 # Inference runs in-process in this fork, so the recorded PID is
                 # the Applio server itself; killing it would kill the whole app.
-                print("Stop Convert: refusing to kill the running Applio process itself.")
+                print(
+                    "Stop Convert: refusing to kill the running Applio process itself."
+                )
                 continue
             try:
                 proc = psutil.Process(pid)

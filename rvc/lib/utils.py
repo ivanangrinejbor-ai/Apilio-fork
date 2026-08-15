@@ -1,6 +1,5 @@
 import os
 import sys
-import zipfile
 import socket
 import tempfile
 import urllib.parse

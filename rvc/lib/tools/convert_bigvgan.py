@@ -249,7 +249,10 @@ def main():
         help="Output RVC pretrainG checkpoint path.",
     )
     parser.add_argument(
-        "--spk-embed-dim", type=int, default=109, help="Speaker embedding size (default: 109)."
+        "--spk-embed-dim",
+        type=int,
+        default=109,
+        help="Speaker embedding size (default: 109).",
     )
     args = parser.parse_args()
 

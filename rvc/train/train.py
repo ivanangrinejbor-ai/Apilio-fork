@@ -60,7 +60,9 @@ def drop_incompatible_weights(model, ckpt):
     """
     model_state = model.state_dict()
     incompatible = {
-        k for k, v in ckpt.items() if k in model_state and v.shape != model_state[k].shape
+        k
+        for k, v in ckpt.items()
+        if k in model_state and v.shape != model_state[k].shape
     }
     if incompatible:
         print(
@@ -596,7 +598,9 @@ def run(
     # Built after checkpoint/pretrain loading so it starts from the loaded weights.
     ema_g = build_ema(unwrap_module(net_g))
     if rank == 0:
-        print(f"EMA generator enabled (decay {getattr(config.train, 'ema_decay', 0.999)}).")
+        print(
+            f"EMA generator enabled (decay {getattr(config.train, 'ema_decay', 0.999)})."
+        )
 
     # On resume, restore the EMA from the last best checkpoint so the moving
     # average does not restart from the raw (worse) loaded weights.
@@ -970,9 +974,7 @@ def train_and_evaluate(
 
         lr = optim_g.param_groups[0]["lr"]
 
-        mel_rmse = torch.sqrt(
-            torch.mean((y_mel - y_hat_mel) ** 2)
-        ).item()
+        mel_rmse = torch.sqrt(torch.mean((y_mel - y_hat_mel) ** 2)).item()
 
         scalar_dict = {
             "loss/g/total": loss_gen_all,
@@ -1081,8 +1083,7 @@ def train_and_evaluate(
 
         # Check completion
         early_stop = (
-            early_stop_epochs > 0
-            and epoch - lowest_value["epoch"] >= early_stop_epochs
+            early_stop_epochs > 0 and epoch - lowest_value["epoch"] >= early_stop_epochs
         )
         if epoch >= custom_total_epoch:
             lowest_value_rounded = round(lowest_value["value"].detach().item(), 3)

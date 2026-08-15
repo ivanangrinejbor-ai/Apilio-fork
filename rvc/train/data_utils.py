@@ -85,7 +85,12 @@ class TextAudioLoaderMultiNSFsid(torch.utils.data.Dataset):
             pitchf = pitchf * 2 ** (semitones / 12)
 
         min_len = min(spec.size(1), pitch.size(0))
-        return spec[:, :min_len], wav[:, : min_len * self.hop_length], pitch[:min_len], pitchf[:min_len]
+        return (
+            spec[:, :min_len],
+            wav[:, : min_len * self.hop_length],
+            pitch[:min_len],
+            pitchf[:min_len],
+        )
 
     def _filter(self):
         """
@@ -192,8 +197,12 @@ class TextAudioLoaderMultiNSFsid(torch.utils.data.Dataset):
         cached = False
         if os.path.exists(spec_filename):
             try:
-                cached = torch.load(spec_filename, map_location="cpu", weights_only=True)
-                if isinstance(cached, dict) and cached.get("params") == list(spec_params):
+                cached = torch.load(
+                    spec_filename, map_location="cpu", weights_only=True
+                )
+                if isinstance(cached, dict) and cached.get("params") == list(
+                    spec_params
+                ):
                     spec = cached["spec"]
                     cached = True
                 else:

@@ -60,7 +60,10 @@ def process_audio_silero(audio, sr=16000, min_silence_len=250, speech_pad_ms=30)
     )
     ratio = sr / 16000
     intervals = np.array(
-        [[int(ts["start"] * ratio), int(ts["end"] * ratio)] for ts in speech_timestamps],
+        [
+            [int(ts["start"] * ratio), int(ts["end"] * ratio)]
+            for ts in speech_timestamps
+        ],
         dtype=np.int64,
     )
     audio_segments = [audio[start:end] for start, end in intervals]

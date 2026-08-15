@@ -85,7 +85,11 @@ def transfer(official_sub: dict, project_state: dict, mapped_keys: set, offset: 
     mapped = 0
     skipped = 0
     for key, value in official_sub.items():
-        if not key.startswith("discriminators.") or "cqt_transform." in key or ".resample." in key:
+        if (
+            not key.startswith("discriminators.")
+            or "cqt_transform." in key
+            or ".resample." in key
+        ):
             # cqt_transform buffers and torchaudio Resample kernels are
             # deterministic (same parameters) and rebuilt by the project
             # module, so they are not transferred.
@@ -93,7 +97,9 @@ def transfer(official_sub: dict, project_state: dict, mapped_keys: set, offset: 
             continue
         target = official_to_project(key, offset)
         if target not in project_state:
-            sys.exit(f"Key mismatch: '{key}' -> '{target}' not in project discriminator")
+            sys.exit(
+                f"Key mismatch: '{key}' -> '{target}' not in project discriminator"
+            )
         if tuple(value.shape) != tuple(project_state[target].shape):
             sys.exit(
                 f"Shape mismatch: '{key}' -> '{target}' "
@@ -114,15 +120,21 @@ def load_official_state(path: str) -> dict:
     return ckpt
 
 
-def convert(input_v2: str, input_v1: str | None, output_path: str, version: str) -> None:
+def convert(
+    input_v2: str, input_v1: str | None, output_path: str, version: str
+) -> None:
     if version == "v2":
-        print("NOTE: version 'v2' has no DiscriminatorR/CQT modules; MRD transfer is skipped.")
+        print(
+            "NOTE: version 'v2' has no DiscriminatorR/CQT modules; MRD transfer is skipped."
+        )
 
     print(f"Loading official BigVGAN-v2 checkpoint: {input_v2}")
     ckpt_v2 = load_official_state(input_v2)
     mpd = ckpt_v2.get("mpd")
     if not isinstance(mpd, dict):
-        sys.exit(f"Checkpoint does not contain an 'mpd' state dict: {sorted(ckpt_v2)[:8]}")
+        sys.exit(
+            f"Checkpoint does not contain an 'mpd' state dict: {sorted(ckpt_v2)[:8]}"
+        )
 
     print(f"Building RVC MultiPeriodDiscriminator (version={version})...")
     net_d = MultiPeriodDiscriminator(
@@ -151,11 +163,15 @@ def convert(input_v2: str, input_v1: str | None, output_path: str, version: str)
                 )
             else:
                 print("Transferring MRD (3x DiscriminatorR)...")
-                mapped2, skipped2 = transfer(mrd, project_state, mapped_keys, MRD_INDEX_OFFSET)
+                mapped2, skipped2 = transfer(
+                    mrd, project_state, mapped_keys, MRD_INDEX_OFFSET
+                )
                 mapped += mapped2
                 skipped_total += skipped2
         else:
-            print(f"NOTE: v1 checkpoint not found ({input_v1}); DiscriminatorR stays random.")
+            print(
+                f"NOTE: v1 checkpoint not found ({input_v1}); DiscriminatorR stays random."
+            )
 
     if version == "v3":
         cqtd = ckpt_v2.get("mrd")
@@ -166,12 +182,16 @@ def convert(input_v2: str, input_v1: str | None, output_path: str, version: str)
             )
         else:
             print("Transferring CQTD (3x DiscriminatorCQT, convs only)...")
-            mapped3, skipped3 = transfer(cqtd, project_state, mapped_keys, CQTD_INDEX_OFFSET)
+            mapped3, skipped3 = transfer(
+                cqtd, project_state, mapped_keys, CQTD_INDEX_OFFSET
+            )
             mapped += mapped3
             skipped_total += skipped3
 
     missing = sorted(set(project_state) - mapped_keys)
-    print(f"Transferred {len(mapped_keys)} tensors ({skipped_total} non-discriminator keys skipped).")
+    print(
+        f"Transferred {len(mapped_keys)} tensors ({skipped_total} non-discriminator keys skipped)."
+    )
     if missing:
         print(
             f"Left randomly initialized ({len(missing)}): "
@@ -246,7 +266,9 @@ def main():
             from huggingface_hub import hf_hub_download
         except ImportError as error:
             sys.exit(f"huggingface_hub is required for --hf-repo-v2: {error}")
-        input_v2 = hf_hub_download(args.hf_repo_v2, "bigvgan_discriminator_optimizer.pt")
+        input_v2 = hf_hub_download(
+            args.hf_repo_v2, "bigvgan_discriminator_optimizer.pt"
+        )
         print(f"Downloaded: {input_v2}")
 
     input_v1 = args.input_v1
@@ -256,7 +278,9 @@ def main():
         except ImportError as error:
             sys.exit(f"huggingface_hub is required for --hf-repo-v1: {error}")
         try:
-            input_v1 = hf_hub_download(args.hf_repo_v1, "bigvgan_discriminator_optimizer.pt")
+            input_v1 = hf_hub_download(
+                args.hf_repo_v1, "bigvgan_discriminator_optimizer.pt"
+            )
             print(f"Downloaded: {input_v1}")
         except (SystemExit, Exception) as error:
             print(f"NOTE: failed to download the v1 (MRD) checkpoint: {error}")

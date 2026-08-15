@@ -397,7 +397,12 @@ def train_tab():
                     info=i18n(
                         "Choose the vocoder for audio synthesis:\n- **HiFi-GAN**: Default option, compatible with all clients.\n- **MRF HiFi-GAN**: Higher fidelity, Applio-only.\n- **RefineGAN**: Superior audio quality, Applio-only.\n- **Vocos**: Lightweight Fourier-domain decoder, official charactr 24 kHz pretrain available, Applio-only.\n- **BigVGAN**: State-of-the-art quality with anti-aliased snake activations, heavy (112M), NVIDIA v2 pretrained decoder, 24 kHz only, Applio-only."
                     ),
-                    choices=["HiFi-GAN", "RefineGAN", "Vocos", "BigVGAN"],  # "MRF HiFi-GAN", ],
+                    choices=[
+                        "HiFi-GAN",
+                        "RefineGAN",
+                        "Vocos",
+                        "BigVGAN",
+                    ],  # "MRF HiFi-GAN", ],
                     value="HiFi-GAN",
                     interactive=True,
                     visible=True,
@@ -835,9 +840,7 @@ def train_tab():
                 )
             with gr.Row():
                 gdrive_connect_button = gr.Button(i18n("Connect Google Drive"))
-                gdrive_confirm_button = gr.Button(
-                    i18n("Confirm Code"), visible=False
-                )
+                gdrive_confirm_button = gr.Button(i18n("Confirm Code"), visible=False)
                 gdrive_sync_button = gr.Button(i18n("Sync Existing Checkpoints"))
             gdrive_code = gr.Textbox(
                 label=i18n("Verification Code"),

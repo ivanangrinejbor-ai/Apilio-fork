@@ -125,9 +125,9 @@ def _run(key, audio, sr, intensity):
     if key == "pink_noise":
         return _mix(audio, _pink_noise(audio.shape[0], n, rng), 0.1 + 0.6 * intensity)
     if key == "brown_noise":
-        noise = np.cumsum(
-            rng.standard_normal((audio.shape[0], n)), axis=1
-        ).astype(np.float32)
+        noise = np.cumsum(rng.standard_normal((audio.shape[0], n)), axis=1).astype(
+            np.float32
+        )
         noise /= np.max(np.abs(noise)) + 1e-8
         return _mix(audio, noise, 0.1 + 0.6 * intensity)
     if key == "rain":
@@ -139,7 +139,9 @@ def _run(key, audio, sr, intensity):
         crackle = _crackle(audio.shape[0], n, sr, rng, density=0.05)
         hum = np.sin(2 * np.pi * 50 * t) * 0.004
         out = _lowpass(audio, sr, 9000)
-        return _mix(out, crackle + hum[np.newaxis, :].astype(np.float32), 0.1 + 0.4 * intensity)
+        return _mix(
+            out, crackle + hum[np.newaxis, :].astype(np.float32), 0.1 + 0.4 * intensity
+        )
     if key == "fnaf_radio":
         radio = _bandpass(audio, sr, 400, 2800)
         crackle = _crackle(audio.shape[0], n, sr, rng, density=0.12, amp=0.25)
@@ -171,7 +173,9 @@ def _run(key, audio, sr, intensity):
         out = _lowpass(audio, sr, 700 - 300 * intensity)
         am = 0.75 + 0.25 * np.sin(2 * np.pi * 1.6 * t + 2.0)
         out = out * am[np.newaxis, :].astype(np.float32)
-        return Reverb(room_size=0.7, damping=0.6, wet_level=0.35, dry_level=0.65)(out, sr)
+        return Reverb(room_size=0.7, damping=0.6, wet_level=0.35, dry_level=0.65)(
+            out, sr
+        )
     if key == "old_tv":
         out = _bandpass(audio, sr, 200, 3500)
         hum = np.sin(2 * np.pi * 50 * t + 0.7) * 0.012
@@ -196,7 +200,9 @@ def _run(key, audio, sr, intensity):
     if key == "vibrato":
         return _vibrato(audio, sr, rate_hz=5.5, depth_st=0.1 + 0.9 * intensity)
     if key == "phaser":
-        return Phaser(rate_hz=0.7, depth=0.3 + 0.6 * intensity, feedback=0.4, mix=1.0)(audio, sr)
+        return Phaser(rate_hz=0.7, depth=0.3 + 0.6 * intensity, feedback=0.4, mix=1.0)(
+            audio, sr
+        )
     if key == "flanger":
         return Chorus(
             rate_hz=0.2,
@@ -223,7 +229,9 @@ def _run(key, audio, sr, intensity):
     if key == "robot":
         carrier = np.abs(np.sin(2 * np.pi * 55 * t))
         mix = 0.4 + 0.6 * intensity
-        return (audio * (1 - mix) + audio * carrier[np.newaxis, :].astype(np.float32) * mix).astype(np.float32)
+        return (
+            audio * (1 - mix) + audio * carrier[np.newaxis, :].astype(np.float32) * mix
+        ).astype(np.float32)
     if key == "alien":
         out = PitchShift(semitones=3.0)(audio, sr)
         out = _vibrato(out, sr, rate_hz=6.0, depth_st=0.2 + 0.5 * intensity)
@@ -268,7 +276,11 @@ def _run(key, audio, sr, intensity):
         return np.stack([left, right], axis=0).astype(np.float32)
     if key == "air":
         out = _highpass(audio, sr, 8000)
-        hiss = rng.standard_normal((audio.shape[0], n)).astype(np.float32) * 0.004 * intensity
+        hiss = (
+            rng.standard_normal((audio.shape[0], n)).astype(np.float32)
+            * 0.004
+            * intensity
+        )
         return (out + hiss).astype(np.float32)
     return audio
 
@@ -365,9 +377,7 @@ def _bandpass(audio, sr, low, high):
 def _notch(audio, sr, freq, width):
     low = max(freq - width / 2, 1.0)
     high = min(freq + width / 2, sr * 0.49)
-    sos = sp_signal.butter(
-        2, [low, high], btype="bandstop", fs=sr, output="sos"
-    )
+    sos = sp_signal.butter(2, [low, high], btype="bandstop", fs=sr, output="sos")
     return sp_signal.sosfilt(sos, audio).astype(np.float32)
 
 

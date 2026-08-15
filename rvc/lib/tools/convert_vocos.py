@@ -78,7 +78,9 @@ def build_synthesizer(spk_embed_dim: int) -> Synthesizer:
     )
 
 
-def convert(input_path: str, output_path: str, spk_embed_dim: int = SPK_EMBED_DIM) -> None:
+def convert(
+    input_path: str, output_path: str, spk_embed_dim: int = SPK_EMBED_DIM
+) -> None:
     if not os.path.isfile(input_path):
         sys.exit(f"Checkpoint not found: {input_path}")
 

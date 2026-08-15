@@ -34,7 +34,9 @@ class SnakeBeta(nn.Module):
         self.beta = nn.Parameter(torch.zeros(1, channels, 1))
 
     def forward(self, x):
-        return x + (1.0 / (self.beta.exp() + 1e-9)) * (x * self.alpha.exp()).sin().pow(2)
+        return x + (1.0 / (self.beta.exp() + 1e-9)) * (x * self.alpha.exp()).sin().pow(
+            2
+        )
 
 
 def kaiser_sinc_filter1d(cutoff, half_width, kernel_size):

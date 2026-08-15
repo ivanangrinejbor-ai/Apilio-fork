@@ -161,8 +161,12 @@ async def change_config(ws: WebSocket):
             vc_instance.vc_model.pipeline.version = (
                 vc_instance.vc_model.pipeline.vc.version
             )
-            vc_instance.vc_model.pipeline.use_f0 = vc_instance.vc_model.pipeline.vc.use_f0
-            vc_instance.vc_model.pipeline.tgt_sr = vc_instance.vc_model.pipeline.vc.tgt_sr
+            vc_instance.vc_model.pipeline.use_f0 = (
+                vc_instance.vc_model.pipeline.vc.use_f0
+            )
+            vc_instance.vc_model.pipeline.tgt_sr = (
+                vc_instance.vc_model.pipeline.vc.tgt_sr
+            )
 
             vc_instance.vc_model.resample_out = tat.Resample(
                 orig_freq=vc_instance.vc_model.pipeline.tgt_sr,
@@ -346,7 +350,9 @@ async def websocket_audio(ws: WebSocket):
                 cross_fade_overlap_size=max(
                     0.0, min(float(params["cross_fade_overlap_size"]), 2.0)
                 ),
-                extra_convert_size=max(0.0, min(float(params["extra_convert_size"]), 4.0)),
+                extra_convert_size=max(
+                    0.0, min(float(params["extra_convert_size"]), 4.0)
+                ),
                 model_path=params["model_path"],
                 index_path=str(params["index_path"]),
                 f0_method=params["f0_method"],
@@ -360,7 +366,7 @@ async def websocket_audio(ws: WebSocket):
                 clean_audio=params["clean_audio"],
                 clean_strength=params["clean_strength"],
                 post_process=params["post_process"],
-                **params["kwargs"]
+                **params["kwargs"],
             )
 
         print("Realtime is ready!")

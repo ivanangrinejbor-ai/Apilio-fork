@@ -372,7 +372,9 @@ def run_tts_script(
 
     output_tts_abs = ensure_within_root(output_tts_path, now_dir)
     ensure_within_root(output_rvc_path, now_dir)
-    if tts_file and not (os.path.isfile(tts_file) and tts_file.lower().endswith(".txt")):
+    if tts_file and not (
+        os.path.isfile(tts_file) and tts_file.lower().endswith(".txt")
+    ):
         raise ValueError("The input text file must be an existing .txt file")
     pth_path = validate_ui_path(pth_path)
     if index_path:
