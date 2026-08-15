@@ -327,9 +327,9 @@ def gdrive_status_text():
         return f"Error: {error}"
 
 
-def begin_connect_ui():
+def begin_connect_ui(client_id, client_secret):
     try:
-        url, msg = begin_connect()
+        url, msg = begin_connect(client_id=client_id, client_secret=client_secret)
     except Exception as error:
         return "", gr.update(visible=False), f"Error: {error}"
     if url:
@@ -817,6 +817,23 @@ def train_tab():
                     interactive=True,
                 )
             with gr.Row():
+                gdrive_client_id = gr.Textbox(
+                    label=i18n("Google OAuth Client ID (optional)"),
+                    info=i18n(
+                        "Google is retiring rclone's shared Drive client_id during 2026. "
+                        "If connecting fails with the 'shared client_id' notice, create "
+                        "your own client at https://rclone.org/drive/#making-your-own-client-id "
+                        "and paste it here."
+                    ),
+                    value="",
+                    interactive=True,
+                )
+                gdrive_client_secret = gr.Textbox(
+                    label=i18n("Google OAuth Client Secret (optional)"),
+                    value="",
+                    interactive=True,
+                )
+            with gr.Row():
                 gdrive_connect_button = gr.Button(i18n("Connect Google Drive"))
                 gdrive_confirm_button = gr.Button(
                     i18n("Confirm Code"), visible=False
@@ -839,7 +856,7 @@ def train_tab():
             )
             gdrive_connect_button.click(
                 fn=begin_connect_ui,
-                inputs=[],
+                inputs=[gdrive_client_id, gdrive_client_secret],
                 outputs=[gdrive_code, gdrive_confirm_button, gdrive_status],
             )
             gdrive_confirm_button.click(

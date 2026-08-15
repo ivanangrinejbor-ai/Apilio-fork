@@ -134,7 +134,14 @@ def check_connection(remote=RCLONE_REMOTE):
     )
     if proc.returncode == 0:
         return True, f"Connected to {remote}:"
-    return False, f"Connection failed: {proc.stderr.strip()[:200]}"
+    detail = proc.stderr.strip()[:300]
+    if "client_id" in detail.lower():
+        detail += (
+            " Google is retiring rclone's shared client_id. Add your own "
+            "client_id/client_secret in the Google Drive section "
+            "(https://rclone.org/drive/#making-your-own-client-id)."
+        )
+    return False, f"Connection failed: {detail}"
 
 
 def _pump_stdout(proc, buf):
@@ -146,8 +153,13 @@ def _text(buf):
     return "".join(buf)
 
 
-def begin_connect(remote=RCLONE_REMOTE):
-    """Start the OAuth flow. Returns (url, message); url is '' on error."""
+def begin_connect(remote=RCLONE_REMOTE, client_id="", client_secret=""):
+    """Start the OAuth flow. Returns (url, message); url is '' on error.
+
+    client_id/client_secret (optional) configure a personal Google OAuth
+    client; Google is retiring rclone's shared client_id during 2026, so a
+    shared-id connection may fail with a NOTICE about the retirement.
+    """
     global _connect_proc, _connect_replied
     exe = rclone_exe()
     if not exe:
@@ -168,10 +180,35 @@ def begin_connect(remote=RCLONE_REMOTE):
             )
     except Exception as error:
         return "", f"rclone --version failed: {error}"
+    client_id = (client_id or "").strip()
+    client_secret = (client_secret or "").strip()
     if remote_configured(remote):
+        if client_id:
+            update = subprocess.run(
+                [
+                    exe,
+                    "config",
+                    "update",
+                    remote,
+                    "client_id",
+                    client_id,
+                    "client_secret",
+                    client_secret,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if update.returncode != 0:
+                return "", (
+                    "Could not apply your client_id to the rclone config: "
+                    f"{update.stderr.strip()[:200]}"
+                )
         cmd = [exe, "-q", "config", "reconnect", remote + ":"]
     else:
         cmd = [exe, "-q", "config", "create", remote, "drive", "scope", "drive"]
+        if client_id:
+            cmd += ["client_id", client_id, "client_secret", client_secret]
     with _connect_lock:
         _connect_proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
@@ -188,9 +225,17 @@ def begin_connect(remote=RCLONE_REMOTE):
                 (line.strip() for line in text.splitlines() if "accounts.google.com" in line),
                 "",
             )
+            hint = (
+                ""
+                if client_id
+                else " Note: this uses rclone's shared client_id, which Google is retiring "
+                "during 2026; if the connection fails afterwards, add your own "
+                "client_id/client_secret above and Connect again."
+            )
             return url, (
                 "Open the URL in your browser, log in with full access to your Google "
                 "Drive, copy the verification code, paste it below and press 'Confirm Code'."
+                + hint
             )
         if not _connect_replied:
             lowered = text.lower()
