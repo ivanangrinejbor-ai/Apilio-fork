@@ -113,7 +113,16 @@ def run_pitch_extraction(files, devices, f0_method, threads):
             )
             for i in range(len(devices))
         ]
-        concurrent.futures.wait(tasks)
+        for task in tasks:
+            try:
+                task.result()
+            except Exception as error:
+                print(
+                    f"Pitch extraction worker failed: {error}\n"
+                    "Make sure the required models (e.g. rmvpe.pt/fcpe.pt) are downloaded in "
+                    "'Download Prerequisites' and that the selected GPUs are available."
+                )
+                sys.exit(1)
 
     print(f"Pitch extraction completed in {time.time() - start_time:.2f} seconds.")
 
@@ -167,7 +176,16 @@ def run_embedding_extraction(
             )
             for i in range(len(devices))
         ]
-        concurrent.futures.wait(tasks)
+        for task in tasks:
+            try:
+                task.result()
+            except Exception as error:
+                print(
+                    f"Embedding extraction worker failed: {error}\n"
+                    "Make sure the required embedder model is downloaded in "
+                    "'Download Prerequisites' and that the selected GPUs are available."
+                )
+                sys.exit(1)
 
     print(f"Embedding extraction completed in {time.time() - start_time:.2f} seconds.")
 

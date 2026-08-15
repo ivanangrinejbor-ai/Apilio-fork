@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 from random import shuffle
 from rvc.configs.config import Config
 import json
@@ -29,6 +30,16 @@ def generate_filelist(model_path: str, sample_rate: int, include_mutes: int = 2)
     f0_files = set(name.split(".")[0] for name in os.listdir(f0_dir))
     f0nsf_files = set(name.split(".")[0] for name in os.listdir(f0nsf_dir))
     names = gt_wavs_files & feature_files & f0_files & f0nsf_files
+
+    if not names:
+        print(
+            "ERROR: No matching files were found between the sliced audios, extracted "
+            "features, f0 and f0_voiced folders. The feature extraction likely failed "
+            "silently (e.g. missing rmvpe.pt/fcpe.pt predictors or embedder models). "
+            "Please check the extraction logs and re-run 'Extract Features' after "
+            "downloading the prerequisites."
+        )
+        sys.exit(1)
 
     try:
         model_info_path = os.path.join(model_path, "model_info.json")
