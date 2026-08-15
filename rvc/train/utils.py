@@ -1,5 +1,6 @@
 import os
 import glob
+import copy
 import torch
 import numpy as np
 import soundfile as sf
@@ -7,6 +8,35 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 
 MATPLOTLIB_FLAG = False
+
+
+def build_ema(model, decay=0.999):
+    """Create an exponential moving average copy of a model.
+
+    The EMA copy is updated in-place after every optimizer step and is what
+    gets saved to checkpoints, matching the official BigVGAN/Vocos training
+    recipe (inference from EMA weights sounds more stable than the raw
+    generator, especially with an adversarial loss).
+    """
+    ema = copy.deepcopy(model)
+    ema.eval()
+    for param in ema.parameters():
+        param.requires_grad_(False)
+    return ema
+
+
+def unwrap_module(model):
+    return model.module if hasattr(model, "module") else model
+
+
+@torch.no_grad()
+def update_ema(ema_model, model, decay):
+    """In-place update of the EMA copy with ``ema = decay * ema + (1-decay) * model``."""
+    ema_params = ema_model.parameters()
+    for ema_param, src_param in zip(ema_params, model.parameters()):
+        ema_param.mul_(decay).add_(src_param.detach(), alpha=1 - decay)
+    for ema_buf, src_buf in zip(ema_model.buffers(), model.buffers()):
+        ema_buf.copy_(src_buf.detach())
 
 
 def replace_keys_in_dict(d, old_key_part, new_key_part):

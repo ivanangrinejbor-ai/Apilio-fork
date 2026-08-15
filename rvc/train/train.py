@@ -31,12 +31,15 @@ from rvc.train.mel_processing import (
 )
 from rvc.train.utils import (
     HParams,
+    build_ema,
     latest_checkpoint_path,
     load_checkpoint,
     load_wav_to_torch,
     plot_spectrogram_to_numpy,
     save_checkpoint,
     summarize,
+    update_ema,
+    unwrap_module,
 )
 
 # Zluda hijack
@@ -578,6 +581,12 @@ def run(
                 print(e)
                 sys.exit(1)
 
+    # Exponential moving average copy of the generator, used for checkpoints.
+    # Built after checkpoint/pretrain loading so it starts from the loaded weights.
+    ema_g = build_ema(unwrap_module(net_g))
+    if rank == 0:
+        print(f"EMA generator enabled (decay {getattr(config.train, 'ema_decay', 0.999)}).")
+
     # Initialize schedulers
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(
         optim_g, gamma=config.train.lr_decay, last_epoch=epoch_str - 2
@@ -631,7 +640,7 @@ def run(
             rank,
             epoch,
             config,
-            [net_g, net_d],
+            [net_g, net_d, ema_g],
             [optim_g, optim_d],
             [train_loader, None],
             [writer_eval],
@@ -673,7 +682,7 @@ def train_and_evaluate(
         rank (int): Rank of the current process.
         epoch (int): Current epoch number.
         hps (Namespace): Hyperparameters.
-        nets (list): List of models [net_g, net_d].
+        nets (list): List of models [net_g, net_d, ema_g].
         optims (list): List of optimizers [optim_g, optim_d].
         loaders (list): List of dataloaders [train_loader, eval_loader].
         writers (list): List of TensorBoard writers [writer_eval].
@@ -685,7 +694,7 @@ def train_and_evaluate(
     if epoch == 1:
         lowest_value = {"step": 0, "value": float("inf"), "epoch": 0}
 
-    net_g, net_d = nets
+    net_g, net_d, ema_g = nets
     optim_g, optim_d = optims
     train_loader = loaders[0] if loaders is not None else None
     if writers is not None:
@@ -841,6 +850,13 @@ def train_and_evaluate(
 
             global_step += 1
 
+            # Track the exponential moving average of the generator weights
+            update_ema(
+                ema_g,
+                unwrap_module(net_g),
+                getattr(hps.train, "ema_decay", 0.999),
+            )
+
             # queue for rolling losses over 50 steps
             avg_losses["grad_d_50"].append(grad_norm_d)
             avg_losses["grad_g_50"].append(grad_norm_g)
@@ -994,7 +1010,7 @@ def train_and_evaluate(
         if epoch % save_every_epoch == 0:
             checkpoint_suffix = f"{2333333 if save_only_latest else global_step}.pth"
             save_checkpoint(
-                net_g,
+                ema_g,
                 optim_g,
                 config.train.learning_rate,
                 epoch,
@@ -1065,11 +1081,7 @@ def train_and_evaluate(
             os.remove(m)
 
         if model_add:
-            ckpt = (
-                net_g.module.state_dict()
-                if hasattr(net_g, "module")
-                else net_g.state_dict()
-            )
+            ckpt = ema_g.state_dict()
             for m in model_add:
                 if not os.path.exists(m):
                     extract_model(
