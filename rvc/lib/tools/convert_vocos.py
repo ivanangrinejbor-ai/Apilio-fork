@@ -109,6 +109,28 @@ def convert(input_path: str, output_path: str, spk_embed_dim: int = SPK_EMBED_DI
 
     net_g.dec.load_state_dict(mapped, strict=False)
 
+    # Warm-start the input projection (backbone.embed): the official Vocos
+    # projects 100 mel bands, the RVC decoder projects the 192-channel latent.
+    # Both are Conv1d with kernel 7, so the official weights slot into the
+    # first 100 input channels and the pretrained backbone receives a
+    # mel-like projection from the first step instead of pure noise.
+    try:
+        official_w = official_state["backbone.embed.weight"]
+        official_b = official_state["backbone.embed.bias"]
+        if tuple(official_w.shape) == (512, 100, 7):
+            with torch.no_grad():
+                proj_w = net_g.dec.backbone.embed.weight
+                proj_b = net_g.dec.backbone.embed.bias
+                proj_w.zero_()
+                proj_w[:, :100, :] = official_w
+                proj_b.copy_(official_b)
+            print(
+                "Warm-started backbone.embed: official mel projection copied "
+                "into the first 100 latent channels."
+            )
+    except KeyError:
+        print("NOTE: official backbone.embed not found; input projection stays random.")
+
     missing = sorted(set(dec_state) - set(mapped))
     print(
         f"Transferred {len(mapped)} tensors "

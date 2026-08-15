@@ -175,6 +175,33 @@ def convert(input_path: str, output_path: str, spk_embed_dim: int = 109) -> None
 
     net_g.dec.load_state_dict(mapped, strict=False)
 
+    # Warm-start conv_pre (input projection): the official BigVGAN maps 100
+    # mel bands, the RVC decoder maps the 192-channel latent. Both are
+    # Conv1d with kernel 7, so the official weight_norm parameters slot into
+    # the first 100 input channels and the pretrained decoder blocks receive
+    # a mel-like projection from the first step instead of pure noise
+    # (zeroed channels contribute nothing to the weight_norm ||v||, so the
+    # official effective weights are preserved exactly).
+    try:
+        official_w = official_state["conv_pre.weight_v"]
+        official_g = official_state["conv_pre.weight_g"]
+        official_b = official_state["conv_pre.bias"]
+        if tuple(official_w.shape) == (1536, 100, 7):
+            with torch.no_grad():
+                proj_v = net_g.dec.conv_pre.parametrizations.weight.original1
+                proj_g = net_g.dec.conv_pre.parametrizations.weight.original0
+                proj_b = net_g.dec.conv_pre.bias
+                proj_v.zero_()
+                proj_v[:, :100, :] = official_w
+                proj_g.copy_(official_g)
+                proj_b.copy_(official_b)
+            print(
+                "Warm-started conv_pre: official mel projection copied "
+                "into the first 100 latent channels."
+            )
+    except KeyError:
+        print("NOTE: official conv_pre not found; input projection stays random.")
+
     missing = sorted(set(dec_state) - set(mapped))
     unexpected = sorted(set(mapped) - set(dec_state))
     print(f"Transferred {len(mapped)} tensors ({len(skipped)} skipped: conv_pre).")
