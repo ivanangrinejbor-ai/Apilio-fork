@@ -11,6 +11,8 @@ i18n = I18nAuto()
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 
+from rvc.lib.utils import safe_extract_zip
+
 from tabs.settings.sections.restart import restart_applio
 
 plugins_path = os.path.join(now_dir, "tabs", "plugins", "installed")
@@ -55,7 +57,7 @@ def save_plugin_dropbox(dropbox):
         print("Proceeding with the extraction...")
 
         with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-            zip_ref.extractall(plugins_path)
+            safe_extract_zip(zip_ref, plugins_path)
         os.remove(zip_file_path)
 
         if os.path.exists(os.path.join(folder_path, "requirements.txt")):

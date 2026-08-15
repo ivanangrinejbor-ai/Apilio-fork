@@ -1,5 +1,9 @@
 import os
 import sys
+import zipfile
+import socket
+import tempfile
+import urllib.parse
 import soxr
 import librosa
 import soundfile as sf
@@ -101,6 +105,67 @@ def format_title(title):
     formatted_title = re.sub(r"[^\w\s.-]", "", formatted_title, flags=re.UNICODE)
     formatted_title = re.sub(r"\s+", "_", formatted_title)
     return formatted_title
+
+
+def safe_extract_zip(zip_ref, dest_path):
+    """Extract a zip archive while blocking zip-slip (path traversal) members."""
+    dest_real = os.path.realpath(dest_path)
+    for member in zip_ref.infolist():
+        member_path = os.path.realpath(os.path.join(dest_path, member.filename))
+        if not member_path.startswith(dest_real + os.sep):
+            raise ValueError(f"Unsafe path in zip archive: {member.filename}")
+    zip_ref.extractall(dest_path)
+
+
+def ensure_within_root(path, root):
+    """Return the absolute path if it stays inside root, raise ValueError otherwise."""
+    abs_path = os.path.abspath(path)
+    abs_root = os.path.abspath(root)
+    if abs_path != abs_root and not abs_path.startswith(abs_root + os.sep):
+        raise ValueError(f"Path {path} is outside the allowed directory {root}")
+    return abs_path
+
+
+def validate_ui_path(path, root=None):
+    """Validate a user-supplied path: must be inside the project root,
+    or a file uploaded through Gradio (stored in its temp directory)."""
+    if not path:
+        return path
+    abs_path = os.path.abspath(str(path))
+    root = os.path.abspath(root or now_dir)
+    gradio_dir = os.path.abspath(os.path.join(tempfile.gettempdir(), "gradio"))
+    if abs_path == gradio_dir or abs_path.startswith(gradio_dir + os.sep):
+        return abs_path
+    return ensure_within_root(abs_path, root)
+
+
+def validate_url(url):
+    """Reject SSRF-prone URLs (non-http(s), localhost, private/link-local addresses)."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Only http/https URLs are allowed: {url}")
+    hostname = parsed.hostname
+    if hostname is None:
+        raise ValueError(f"Invalid URL: {url}")
+    hostname = hostname.lower()
+    if hostname in ("localhost",):
+        raise ValueError(f"Local addresses are not allowed: {url}")
+    try:
+        ip = socket.gethostbyname(hostname)
+    except OSError:
+        raise ValueError(f"Could not resolve host: {hostname}")
+    parts = [int(p) for p in ip.split(".")]
+    if (
+        parts[0] == 10
+        or parts[0] == 127
+        or (parts[0] == 169 and parts[1] == 254)
+        or (parts[0] == 172 and 16 <= parts[1] <= 31)
+        or (parts[0] == 192 and parts[1] == 168)
+        or (parts[0] == 0)
+        or parts[0] >= 224
+    ):
+        raise ValueError(f"Private or reserved addresses are not allowed: {url}")
+    return url
 
 
 def load_embedding(embedder_model, custom_embedder=None):

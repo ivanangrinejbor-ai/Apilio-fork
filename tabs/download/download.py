@@ -3,7 +3,6 @@ import sys
 import json
 import shutil
 import requests
-import tempfile
 import gradio as gr
 import pandas as pd
 
@@ -14,25 +13,21 @@ now_dir = os.getcwd()
 sys.path.append(now_dir)
 
 from core import run_download_script
-from rvc.lib.utils import format_title
+from rvc.lib.utils import format_title, validate_url
 
 from assets.i18n.i18n import I18nAuto
 
 i18n = I18nAuto()
 
-gradio_temp_dir = os.path.join(tempfile.gettempdir(), "gradio")
-
-if os.path.exists(gradio_temp_dir):
-    shutil.rmtree(gradio_temp_dir)
-
 
 def save_drop_model(dropbox):
-    if "pth" not in dropbox and "index" not in dropbox:
+    file_name = os.path.basename(dropbox)
+    if not file_name.lower().endswith((".pth", ".index")):
         raise gr.Error(
             message="The file you dropped is not a valid model file. Please try again."
         )
 
-    file_name = format_title(os.path.basename(dropbox))
+    file_name = format_title(file_name)
     model_name = file_name
 
     if ".pth" in model_name:
@@ -68,7 +63,7 @@ def fetch_pretrained_data():
             encoding="utf-8",
         ) as f:
             data = json.load(f)
-    except:
+    except (OSError, json.JSONDecodeError):
         try:
             response = requests.get(json_url)
             response.raise_for_status()
@@ -85,7 +80,7 @@ def fetch_pretrained_data():
                     separators=(",", ": "),
                     ensure_ascii=False,
                 )
-        except:
+        except (requests.RequestException, OSError, json.JSONDecodeError):
             data = {
                 "Titan": {
                     "32k": {"D": "null", "G": "null"},
@@ -125,11 +120,14 @@ def download_pretrained_model(model, sample_rate, url_g="", url_d=""):
     tasks = []
 
     if url_g or url_d:
-        tasks = [
-            (u, os.path.join(save_path, os.path.basename(u)))
-            for u in [url_g, url_d]
-            if u
-        ]
+        tasks = []
+        for u in [url_g, url_d]:
+            if not u:
+                continue
+            validate_url(u)
+            if not u.split("?")[0].lower().endswith(".pth"):
+                raise gr.Error("Custom pretrained URLs must point to a .pth file.")
+            tasks.append((u, os.path.join(save_path, os.path.basename(u))))
         if not tasks:
             return gr.Warning(i18n("Please provide at least one URL."))
     else:

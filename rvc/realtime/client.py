@@ -10,9 +10,32 @@ sys.path.append(now_dir)
 
 from .core import VoiceChanger, AUDIO_SAMPLE_RATE
 
+from assets.auth import check_api_token
+
 app = FastAPI()
 vc_instance = None
 params = {}
+
+MAX_AUDIO_BYTES = 8 * 1024 * 1024
+MAX_ACTIVE_WS = 4
+_active_ws = 0
+
+
+def _ws_authenticated(ws) -> bool:
+    token = ws.query_params.get("token", "")
+    return check_api_token(token)
+
+
+@app.middleware("http")
+async def api_auth_middleware(request, call_next):
+    from fastapi.responses import JSONResponse
+
+    token = request.headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        token = token[len("Bearer ") :]
+    if not check_api_token(token):
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 @app.websocket("/change-config")
@@ -21,21 +44,30 @@ async def change_config(ws: WebSocket):
 
     await ws.accept()
 
+    if not _ws_authenticated(ws):
+        await ws.close(code=4401)
+        return
+
     if vc_instance is None:
+        await ws.close(code=4404)
         return
 
     text = await ws.receive_text()
     jsons = json.loads(text)
 
     if jsons["if_kwargs"] and jsons["value"] is not None:
-        params["kwargs"][jsons["key"]] = jsons["value"]
+        params.setdefault("kwargs", {})[jsons["key"]] = jsons["value"]
     elif jsons["value"] is not None:
         params[jsons["key"]] = jsons["value"]
 
     crossfade_frame = int(
-        params.get("cross_fade_overlap_size", 0.1) * AUDIO_SAMPLE_RATE
+        max(0.0, min(float(params.get("cross_fade_overlap_size", 0.1)), 2.0))
+        * AUDIO_SAMPLE_RATE
     )
-    extra_frame = int(params.get("extra_convert_size", 0.5) * AUDIO_SAMPLE_RATE)
+    extra_frame = int(
+        max(0.0, min(float(params.get("extra_convert_size", 0.5)), 4.0))
+        * AUDIO_SAMPLE_RATE
+    )
 
     if (
         vc_instance.crossfade_frame != crossfade_frame
@@ -113,22 +145,32 @@ async def change_config(ws: WebSocket):
 
     model_pth = params.get("model_path", vc_instance.vc_model.model_path)
     if model_pth and vc_instance.vc_model.model_path != model_pth:
+        import asyncio
         import torch
         import torchaudio.transforms as tat
 
-        vc_instance.vc_model.model_path = model_pth
-        vc_instance.vc_model.pipeline.vc.load_model(model_pth)
-        vc_instance.vc_model.pipeline.vc.setup_network()
-        # Set a new version, otherwise it will crash.
-        vc_instance.vc_model.pipeline.version = vc_instance.vc_model.pipeline.vc.version
-        vc_instance.vc_model.pipeline.use_f0 = vc_instance.vc_model.pipeline.vc.use_f0
-        vc_instance.vc_model.pipeline.tgt_sr = vc_instance.vc_model.pipeline.vc.tgt_sr
+        from rvc.lib.utils import validate_ui_path
 
-        vc_instance.vc_model.resample_out = tat.Resample(
-            orig_freq=vc_instance.vc_model.pipeline.tgt_sr,
-            new_freq=AUDIO_SAMPLE_RATE,
-            dtype=torch.float32,
-        ).to(vc_instance.vc_model.device)
+        model_pth = validate_ui_path(model_pth)
+
+        def _swap_model():
+            vc_instance.vc_model.model_path = model_pth
+            vc_instance.vc_model.pipeline.vc.load_model(model_pth)
+            vc_instance.vc_model.pipeline.vc.setup_network()
+            # Set a new version, otherwise it will crash.
+            vc_instance.vc_model.pipeline.version = (
+                vc_instance.vc_model.pipeline.vc.version
+            )
+            vc_instance.vc_model.pipeline.use_f0 = vc_instance.vc_model.pipeline.vc.use_f0
+            vc_instance.vc_model.pipeline.tgt_sr = vc_instance.vc_model.pipeline.vc.tgt_sr
+
+            vc_instance.vc_model.resample_out = tat.Resample(
+                orig_freq=vc_instance.vc_model.pipeline.tgt_sr,
+                new_freq=AUDIO_SAMPLE_RATE,
+                dtype=torch.float32,
+            ).to(vc_instance.vc_model.device)
+
+        await asyncio.get_running_loop().run_in_executor(None, _swap_model)
 
         if clean_audio:
             from noisereduce.torchgate import TorchGate
@@ -150,31 +192,32 @@ async def change_config(ws: WebSocket):
     index_path = params.get("index_path", None)
     if index_path:
         if vc_instance.vc_model.index_path != index_path:
+            from rvc.lib.utils import validate_ui_path
+
+            index_path = validate_ui_path(index_path)
             from rvc.realtime.utils.torch import IndexWrapper
 
-            index = IndexWrapper(
-                index_path.strip()
-                .strip('"')
-                .strip("\n")
-                .strip('"')
-                .strip()
-                .replace("trained", "added"),
-                device=vc_instance.device,
-                dtype=vc_instance.vc_model.dtype,
-            )
-            big_tsr, _ = index.read_index_tensor()
+            try:
+                index = IndexWrapper(
+                    index_path.strip()
+                    .strip('"')
+                    .strip("\n")
+                    .strip('"')
+                    .strip()
+                    .replace("trained", "added"),
+                    device=vc_instance.device,
+                    dtype=vc_instance.vc_model.dtype,
+                )
+                big_tsr, _ = index.read_index_tensor()
 
-            # index, big_npy = load_faiss_index(
-            #     index_path.strip()
-            #     .strip('"')
-            #     .strip("\n")
-            #     .strip('"')
-            #     .strip()
-            #     .replace("trained", "added")
-            # )
-            vc_instance.vc_model.pipeline.index = index
-            vc_instance.vc_model.pipeline.big_tsr = big_tsr
-            vc_instance.vc_model.index_path = index_path
+                vc_instance.vc_model.pipeline.index = index
+                vc_instance.vc_model.pipeline.big_tsr = big_tsr
+                vc_instance.vc_model.index_path = index_path
+            except Exception as error:
+                print(f"Failed to load index {index_path}: {error}")
+                vc_instance.vc_model.pipeline.index = None
+                vc_instance.vc_model.pipeline.big_tsr = None
+                vc_instance.vc_model.index_path = None
     else:
         vc_instance.vc_model.pipeline.index = None
         vc_instance.vc_model.pipeline.big_tsr = None
@@ -198,7 +241,10 @@ async def change_config(ws: WebSocket):
         old_hubert_model = vc_instance.vc_model.pipeline.hubert_model
         del old_hubert_model
 
-        from rvc.lib.utils import load_embedding
+        from rvc.lib.utils import load_embedding, validate_ui_path
+
+        if embedder_model_custom:
+            embedder_model_custom = validate_ui_path(embedder_model_custom)
 
         hubert_model = load_embedding(embedder_model, embedder_model_custom)
         hubert_model = hubert_model.to(vc_instance.device).float()
@@ -212,6 +258,13 @@ async def change_config(ws: WebSocket):
 @app.post("/record")
 async def record(request: Request):
     global vc_instance
+
+    if request.headers.get("content-length"):
+        try:
+            if int(request.headers["content-length"]) > MAX_AUDIO_BYTES:
+                return {"type": "error", "value": "Request body too large"}
+        except ValueError:
+            pass
 
     data = await request.json()
     record_button = data.get("record_button", "Stop")
@@ -231,6 +284,10 @@ async def record(request: Request):
             record_audio_path = os.path.join(
                 now_dir, "assets", "audios", "record_audio.wav"
             )
+        else:
+            from rvc.lib.utils import ensure_within_root
+
+            record_audio_path = ensure_within_root(record_audio_path, now_dir)
 
         vc_instance.record_audio = True
         vc_instance.record_audio_path = record_audio_path
@@ -258,8 +315,17 @@ async def record(request: Request):
 
 @app.websocket("/ws-audio")
 async def websocket_audio(ws: WebSocket):
-    global vc_instance, params
+    global vc_instance, params, _active_ws
     await ws.accept()
+
+    if not _ws_authenticated(ws):
+        await ws.close(code=4401)
+        return
+
+    if _active_ws >= MAX_ACTIVE_WS:
+        await ws.close(code=4403, reason="Too many connections")
+        return
+    _active_ws += 1
 
     print("[WS] Connected!")
 
@@ -267,15 +333,20 @@ async def websocket_audio(ws: WebSocket):
         text = await ws.receive_text()
         params = json.loads(text)
 
-        block_frame = params["block_frame"]
+        block_frame = max(1, min(int(params["block_frame"]), AUDIO_SAMPLE_RATE))
 
         print("Starting Realtime...")
 
         if vc_instance is None:
-            vc_instance = VoiceChanger(
+            import asyncio
+
+            vc_instance = await asyncio.to_thread(
+                VoiceChanger,
                 block_frame=block_frame,
-                cross_fade_overlap_size=params["cross_fade_overlap_size"],
-                extra_convert_size=params["extra_convert_size"],
+                cross_fade_overlap_size=max(
+                    0.0, min(float(params["cross_fade_overlap_size"]), 2.0)
+                ),
+                extra_convert_size=max(0.0, min(float(params["extra_convert_size"]), 4.0)),
                 model_path=params["model_path"],
                 index_path=str(params["index_path"]),
                 f0_method=params["f0_method"],
@@ -294,8 +365,14 @@ async def websocket_audio(ws: WebSocket):
 
         print("Realtime is ready!")
 
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+
         while True:
             audio = await ws.receive_bytes()
+            if len(audio) > MAX_AUDIO_BYTES:
+                continue
             arr = np.frombuffer(audio, dtype=np.float32)
 
             if arr.size != block_frame:
@@ -309,7 +386,9 @@ async def websocket_audio(ws: WebSocket):
                 # Avoid errors when disconnecting.
                 return
 
-            audio_output, vol, perf = vc_instance.on_request(
+            audio_output, vol, perf = await loop.run_in_executor(
+                None,
+                vc_instance.on_request,
                 arr * (params["input_audio_gain"] / 100.0),
                 f0_up_key=params["f0_up_key"],
                 index_rate=params["index_rate"],
@@ -327,14 +406,20 @@ async def websocket_audio(ws: WebSocket):
             await ws.send_bytes(audio_output.tobytes())
     except WebSocketDisconnect:
         print("[WS] Disconnected!")
+    except Exception as error:
+        print(f"[WS] Error: {error}")
     finally:
+        _active_ws = max(0, _active_ws - 1)
         if vc_instance is not None:
             del vc_instance
             vc_instance = None
 
-        torch.cuda.empty_cache()
+        try:
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
 
         try:
             await ws.close()
-        except:
+        except Exception:
             pass

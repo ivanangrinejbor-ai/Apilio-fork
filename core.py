@@ -18,6 +18,7 @@ from rvc.lib.tools.analyzer import analyze_audio
 from rvc.lib.tools.launch_tensorboard import launch_tensorboard_pipeline
 from rvc.lib.tools.model_download import model_download_pipeline
 from rvc.lib.tools.prerequisites_download import prequisites_download_pipeline
+from rvc.lib.utils import ensure_within_root, format_title, validate_ui_path
 from rvc.train.process.model_blender import model_blender
 from rvc.train.process.model_information import model_information
 
@@ -113,6 +114,13 @@ def run_infer_script(
     delay_mix: float = 0.5,
     sid: int = 0,
 ):
+    input_path = validate_ui_path(input_path)
+    output_path = validate_ui_path(output_path)
+    pth_path = validate_ui_path(pth_path)
+    if index_path:
+        index_path = validate_ui_path(index_path)
+    if embedder_model_custom:
+        embedder_model_custom = validate_ui_path(embedder_model_custom)
     kwargs = {
         "audio_input_path": input_path,
         "audio_output_path": output_path,
@@ -243,6 +251,13 @@ def run_batch_infer_script(
     delay_mix: float = 0.5,
     sid: int = 0,
 ):
+    input_folder = validate_ui_path(input_folder)
+    output_folder = validate_ui_path(output_folder)
+    pth_path = validate_ui_path(pth_path)
+    if index_path:
+        index_path = validate_ui_path(index_path)
+    if embedder_model_custom:
+        embedder_model_custom = validate_ui_path(embedder_model_custom)
     kwargs = {
         "audio_input_paths": input_folder,
         "audio_output_path": output_folder,
@@ -338,10 +353,18 @@ def run_tts_script(
 ):
     tts_script_path = os.path.join("rvc", "lib", "tools", "tts.py")
 
-    if os.path.exists(output_tts_path) and os.path.abspath(output_tts_path).startswith(
-        os.path.abspath("assets")
-    ):
-        os.remove(output_tts_path)
+    output_tts_abs = ensure_within_root(output_tts_path, now_dir)
+    ensure_within_root(output_rvc_path, now_dir)
+    if tts_file and not (os.path.isfile(tts_file) and tts_file.lower().endswith(".txt")):
+        raise ValueError("The input text file must be an existing .txt file")
+    pth_path = validate_ui_path(pth_path)
+    if index_path:
+        index_path = validate_ui_path(index_path)
+    if embedder_model_custom:
+        embedder_model_custom = validate_ui_path(embedder_model_custom)
+
+    if os.path.exists(output_tts_abs):
+        os.remove(output_tts_abs)
 
     command_tts = [
         *map(
@@ -418,6 +441,9 @@ def run_preprocess_script(
     overlap_len: float,
     normalization_mode: str = "none",
 ):
+    model_name = format_title(os.path.basename(model_name))
+    if not model_name:
+        raise ValueError("Invalid model name")
     preprocess_script_path = os.path.join("rvc", "train", "preprocess", "preprocess.py")
     command = [
         python,
@@ -457,6 +483,9 @@ def run_extract_script(
     embedder_model_custom: str = None,
     include_mutes: int = 2,
 ):
+    model_name = format_title(os.path.basename(model_name))
+    if not model_name:
+        raise ValueError("Invalid model name")
     model_path = os.path.join(logs_path, model_name)
     extract = os.path.join("rvc", "train", "extract", "extract.py")
 
@@ -555,6 +584,9 @@ def run_train_script(
     checkpointing: bool = False,
     shutdown_check: bool = False,
 ):
+    model_name = format_title(os.path.basename(model_name))
+    if not model_name:
+        raise ValueError("Invalid model name")
     if pretrained == True:
         from rvc.lib.tools.pretrained_selector import pretrained_selector
 
@@ -622,6 +654,9 @@ def run_train_script(
 
 # Index
 def run_index_script(model_name: str, index_algorithm: str):
+    model_name = format_title(os.path.basename(model_name))
+    if not model_name:
+        raise ValueError("Invalid model name")
     index_script_path = os.path.join("rvc", "train", "process", "extract_index.py")
     command = [
         python,
@@ -639,6 +674,7 @@ def run_index_script(model_name: str, index_algorithm: str):
 
 # Model information
 def run_model_information_script(pth_path: str):
+    pth_path = validate_ui_path(pth_path)
     print(model_information(pth_path))
     return model_information(pth_path)
 
@@ -647,6 +683,8 @@ def run_model_information_script(pth_path: str):
 def run_model_blender_script(
     model_name: str, pth_path_1: str, pth_path_2: str, ratio: float
 ):
+    pth_path_1 = validate_ui_path(pth_path_1)
+    pth_path_2 = validate_ui_path(pth_path_2)
     message, model_blended = model_blender(model_name, pth_path_1, pth_path_2, ratio)
     return message, model_blended
 
@@ -682,6 +720,8 @@ def run_prerequisites_script(
 def run_audio_analyzer_script(
     input_path: str, save_plot_path: str = "logs/audio_analysis.png"
 ):
+    input_path = validate_ui_path(input_path)
+    save_plot_path = ensure_within_root(save_plot_path, now_dir)
     audio_info, plot_path = analyze_audio(input_path, save_plot_path)
     print(
         f"Audio info of {input_path}: {audio_info}",

@@ -18,7 +18,7 @@ async def main():
         try:
             with open(tts_file, "r", encoding="utf-8") as file:
                 text = file.read()
-        except:
+        except UnicodeDecodeError:
             with open(tts_file, "r") as file:
                 text = file.read()
 

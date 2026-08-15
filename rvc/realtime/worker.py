@@ -231,7 +231,7 @@ class VoiceChangerWorker:
         ctx = mp.get_context("spawn")
         self._input_q = ctx.Queue(maxsize=2)
         self._output_q = ctx.Queue(maxsize=2)
-        self._config_q = ctx.Queue()
+        self._config_q = ctx.Queue(maxsize=2)
         self._stop = ctx.Event()
         self._vc_kwargs = vc_kwargs
         self._process = None

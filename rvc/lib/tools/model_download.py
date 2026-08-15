@@ -11,7 +11,7 @@ from tqdm import tqdm
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 
-from rvc.lib.utils import format_title
+from rvc.lib.utils import format_title, safe_extract_zip, validate_url
 from rvc.lib.tools import gdown
 
 file_path = os.path.join(now_dir, "logs")
@@ -37,6 +37,7 @@ def download_from_url(url):
     os.chdir(zips_path)
 
     try:
+        validate_url(url)
         if "drive.google.com" in url:
             file_id = extract_google_drive_id(url)
             if file_id:
@@ -143,7 +144,7 @@ def rename_downloaded_files():
 def extract(zipfile_path, unzips_path):
     try:
         with zipfile.ZipFile(zipfile_path, "r") as zip_ref:
-            zip_ref.extractall(unzips_path)
+            safe_extract_zip(zip_ref, unzips_path)
         os.remove(zipfile_path)
         return True
     except Exception as error:
@@ -155,7 +156,7 @@ def unzip_file(zip_path, zip_file_name):
     zip_file_path = os.path.join(zip_path, zip_file_name + ".zip")
     extract_path = os.path.join(file_path, zip_file_name)
     with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-        zip_ref.extractall(extract_path)
+        safe_extract_zip(zip_ref, extract_path)
     os.remove(zip_file_path)
 
 

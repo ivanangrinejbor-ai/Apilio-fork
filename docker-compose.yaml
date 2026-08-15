@@ -7,6 +7,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "6969"
+    environment:
+      # Authentication is enabled only when both variables are set.
+      # The UI is exposed on 0.0.0.0, so always set these when deploying remotely.
+      APP_USERNAME: ${APP_USERNAME:-}
+      APP_PASSWORD: ${APP_PASSWORD:-}
     deploy:
       resources:
         reservations:

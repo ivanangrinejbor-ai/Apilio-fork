@@ -372,7 +372,10 @@ window.StreamAudioRealtime = async function (
       "//" +
       location.hostname +
       `:${location.port}` +
-      "/api/ws-audio";
+      "/api/ws-audio" +
+      (window.__APILIO_API_TOKEN
+        ? "?token=" + encodeURIComponent(window.__APILIO_API_TOKEN)
+        : "");
     const ws = new WebSocket(wsUrl);
 
     // Set new values ​​of buttons to avoid users initiating multiple realtime threads
@@ -511,7 +514,10 @@ window.ChangeConfig = async function (value, key, if_kwargs = false) {
       "//" +
       location.hostname +
       `:${location.port}` +
-      "/api/change-config";
+      "/api/change-config" +
+      (window.__APILIO_API_TOKEN
+        ? "?token=" + encodeURIComponent(window.__APILIO_API_TOKEN)
+        : "");
     const ws = new WebSocket(wsUrl);
 
     ws.binaryType = "arraybuffer";
@@ -588,6 +594,9 @@ window.SoundfileRecordAudio = async function (
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(window.__APILIO_API_TOKEN
+        ? { Authorization: "Bearer " + window.__APILIO_API_TOKEN }
+        : {}),
     },
     body: JSON.stringify({
       record_button: RecordButton,

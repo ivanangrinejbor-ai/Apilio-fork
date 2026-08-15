@@ -17,12 +17,13 @@ RUN apt update && \
 COPY . .
 
 # Create a virtual environment in the app directory and install dependencies
+# torch/torchaudio are installed separately below (CUDA build), so exclude them from requirements.txt
 RUN python3 -m venv /app/.venv && \
     . /app/.venv/bin/activate && \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir python-ffmpeg && \
-    pip install --no-cache-dir torch==2.7.1 torchvision torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128 && \
-    if [ -f "requirements.txt" ]; then pip install --no-cache-dir -r requirements.txt; fi
+    pip install --no-cache-dir -r <(grep -vE '^torch' requirements.txt) && \
+    pip install --no-cache-dir torch==2.7.1 torchvision torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
 
 # Define volumes for persistent storage
 VOLUME ["/app/logs/"]
@@ -30,6 +31,5 @@ VOLUME ["/app/logs/"]
 # Set environment variables if necessary
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Run the app
-ENTRYPOINT ["python3"]
-CMD ["app.py", "--server-name", "0.0.0.0", "--port", "6969"]
+# Run the app (authentication is enabled when APP_USERNAME/APP_PASSWORD are set)
+ENTRYPOINT ["sh", "/app/entrypoint.sh"]

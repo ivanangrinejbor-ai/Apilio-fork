@@ -135,7 +135,7 @@ class Audio:
         monitor: bool = False,
     ):
         self.callbacks = callbacks
-        self.mon_queue = Queue()
+        self.mon_queue = Queue(maxsize=4)
         self.stream = None
         self.input_stream = None
         self.output_stream = None
@@ -196,7 +196,10 @@ class Audio:
         try:
             out_wav = self.process_data_with_time(indata)
 
-            self.mon_queue.put(out_wav)
+            try:
+                self.mon_queue.put_nowait(out_wav)
+            except Exception:
+                pass
         except Exception as error:
             print(f"An error occurred while running the audio stream: {error}")
             print(traceback.format_exc())
@@ -209,7 +212,10 @@ class Audio:
 
             output_channels = outdata.shape[1]
             if self.use_monitor:
-                self.mon_queue.put(out_wav)
+                try:
+                    self.mon_queue.put_nowait(out_wav)
+                except Exception:
+                    pass
 
             outdata[:] = (
                 np.repeat(out_wav, output_channels).reshape(-1, output_channels)
@@ -221,10 +227,13 @@ class Audio:
 
     def audio_queue(self, outdata: np.ndarray, gain: float):
         try:
-            mon_wav = self.mon_queue.get()
+            mon_wav = self.mon_queue.get_nowait()
 
-            while self.mon_queue.qsize() > 0:
-                self.mon_queue.get()
+            while True:
+                try:
+                    self.mon_queue.get_nowait()
+                except Exception:
+                    break
 
             output_channels = outdata.shape[1]
             outdata[:] = (

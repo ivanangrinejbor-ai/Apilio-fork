@@ -55,10 +55,52 @@ _ARG_PARSER.add_argument(
 _ARG_PARSER.add_argument(
     "--client", action="store_true", help="Enable client mode (mounts realtime API)"
 )
+_ARG_PARSER.add_argument(
+    "--username",
+    type=str,
+    default="",
+    help="Enable authentication with this username (requires --password)",
+)
+_ARG_PARSER.add_argument(
+    "--password",
+    type=str,
+    default="",
+    help="Password for authentication (requires --username)",
+)
 _args, _ = _ARG_PARSER.parse_known_args()
 client_mode = _args.client
 _has_share = _args.share
 _has_open = _args.open
+
+# Authentication: CLI arguments override the config file
+from assets.auth import (
+    auth_enabled,
+    check_credentials,
+    generate_api_token,
+    load_auth_config,
+    set_api_token,
+)
+
+if _args.username or _args.password:
+    import json as _json
+
+    _auth_config = load_auth_config()
+    _auth_config["enabled"] = bool(_args.username and _args.password)
+    _auth_config["username"] = _args.username
+    _auth_config["password"] = _args.password
+    _config_path = os.path.join(now_dir, "assets", "config.json")
+    with open(_config_path, "r", encoding="utf-8") as _f:
+        _cfg = _json.load(_f)
+    _cfg["auth"] = _auth_config
+    with open(_config_path, "w", encoding="utf-8") as _f:
+        _json.dump(_cfg, _f, indent=2, ensure_ascii=False)
+
+_auth = None
+if auth_enabled():
+    _auth = check_credentials
+    if client_mode:
+        set_api_token(generate_api_token())
+    print("Authentication enabled. Log in with the configured username and password.")
 
 # Set up logging
 logging.getLogger("uvicorn").setLevel(logging.WARNING)
@@ -142,6 +184,18 @@ import assets.themes.loadThemes as loadThemes
 
 my_applio = loadThemes.load_theme() or "ParityError/Interstellar"
 
+
+def get_main_js():
+    js_code = pathlib.Path(
+        os.path.join(now_dir, "tabs", "realtime", "main.js")
+    ).read_text()
+    if client_mode and auth_enabled():
+        from assets.auth import API_TOKEN
+
+        js_code = f"window.__APILIO_API_TOKEN = '{API_TOKEN}';\n" + js_code
+    return js_code
+
+
 # Define Gradio interface
 with gr.Blocks(
     title="Applio",
@@ -149,17 +203,7 @@ with gr.Blocks(
         {
             "theme": my_applio,
             "css": "footer{display:none !important}",
-            "js": (
-                (
-                    "() => {\n"
-                    + pathlib.Path(
-                        os.path.join(now_dir, "tabs", "realtime", "main.js")
-                    ).read_text()
-                    + "\n}"
-                )
-                if client_mode
-                else None
-            ),
+            "js": (f"() => {{\n{get_main_js()}\n}}" if client_mode else None),
         }
         if not GRADIO_6
         else {}
@@ -224,17 +268,12 @@ def launch_gradio(server_name: str, server_port: int) -> None:
         server_name=server_name,
         server_port=server_port,
         prevent_thread_lock=client_mode,
+        auth=_auth,
         **(
             {
                 "theme": my_applio,
                 "css": "footer{display:none !important}",
-                "js": (
-                    pathlib.Path(
-                        os.path.join(now_dir, "tabs", "realtime", "main.js")
-                    ).read_text()
-                    if client_mode
-                    else None
-                ),
+                "js": (get_main_js() if client_mode else None),
             }
             if GRADIO_6
             else {}

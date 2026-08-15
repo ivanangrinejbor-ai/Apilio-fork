@@ -74,7 +74,7 @@ def get_files(type="model"):
     best = {}
     order = 0
 
-    for root, _, files in os.walk(model_root_relative, followlinks=True):
+    for root, _, files in os.walk(model_root_relative, followlinks=False):
         for file in files:
             if not file.endswith(exts):
                 continue
@@ -228,6 +228,9 @@ def extract_model_and_epoch(path):
 def get_speakers_id(model):
     if model:
         try:
+            from rvc.lib.utils import validate_ui_path
+
+            model = validate_ui_path(model)
             model_data = torch.load(
                 os.path.join(now_dir, model), map_location="cpu", weights_only=True
             )
@@ -326,7 +329,7 @@ def save_realtime_settings(
             ] = (monitor_device or "")
         if model_file is not None:
             config["realtime"]["model_file"] = model_file or ""
-        if monitor_device is not None:
+        if index_file is not None:
             config["realtime"]["index_file"] = index_file or ""
         if asio_enabled is not None:
             config["realtime"]["asio_enabled"] = asio_enabled
@@ -554,6 +557,14 @@ def start_realtime(
     )
     block_frame = int(chunk_size * audio_sample_rate / 1000)
 
+    from rvc.lib.utils import validate_ui_path
+
+    pth_path = validate_ui_path(pth_path)
+    if index_path:
+        index_path = validate_ui_path(index_path)
+    if embedder_model_custom:
+        embedder_model_custom = validate_ui_path(embedder_model_custom)
+
     callbacks_kwargs = {
         "pass_through": PASS_THROUGH,
         "block_frame": block_frame,
@@ -676,8 +687,24 @@ def start_realtime(
     yield "Realtime is starting!", interactive_false, interactive_visible
 
     warmup_total = 0
+    warmup_wait_start = time.time()
     while warmup_total == 0:
+        time.sleep(0.1)
         warmup_total = callbacks.vc.vc_model.warmup_blocks
+        if callbacks is not None and not callbacks.vc._process.is_alive():
+            running = False
+            print(f"Worker process crashed during model loading.")
+            yield (
+                "Worker process crashed during model loading.",
+                interactive_true,
+                interactive_false,
+            )
+            return
+        if time.time() - warmup_wait_start > 300:
+            running = False
+            print(f"Model loading timed out.")
+            yield "Model loading timed out.", interactive_true, interactive_false
+            return
 
     while running and callbacks is not None and audio_manager is not None:
         time.sleep(0.1)
@@ -1702,6 +1729,14 @@ def realtime_tab():
             ), gr.update(choices=new_sids, value=0 if new_sids else None)
 
         def refresh_devices():
+            global running
+            if running and audio_manager is not None:
+                gr.Warning("Stop the realtime session before refreshing devices.")
+                return (
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
             sd._terminate()
             sd._initialize()
 

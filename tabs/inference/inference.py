@@ -11,7 +11,7 @@ import torch
 
 from assets.i18n.i18n import I18nAuto
 from core import run_batch_infer_script, run_infer_script
-from rvc.lib.utils import format_title
+from rvc.lib.utils import ensure_within_root, format_title
 from tabs.settings.sections.filter import get_filter_trigger, load_config_filter
 from tabs.settings.sections.restart import stop_infer
 
@@ -95,7 +95,7 @@ def get_files(type="model"):
     best = {}
     order = 0
 
-    for root, _, files in os.walk(model_root_relative, followlinks=True):
+    for root, _, files in os.walk(model_root_relative, followlinks=False):
         for file in files:
             if not file.endswith(exts):
                 continue
@@ -141,9 +141,11 @@ custom_embedders = [
 
 
 def update_sliders(preset):
-    with open(
-        os.path.join(PRESETS_DIR, f"{preset}.json"), "r", encoding="utf-8"
-    ) as json_file:
+    preset = os.path.basename(str(preset)).replace("\\", "/")
+    preset_path = ensure_within_root(
+        os.path.join(PRESETS_DIR, f"{preset}.json"), PRESETS_DIR
+    )
+    with open(preset_path, "r", encoding="utf-8") as json_file:
         values = json.load(json_file)
     return (
         values["pitch"],
@@ -154,9 +156,11 @@ def update_sliders(preset):
 
 
 def update_sliders_formant(preset):
-    with open(
-        os.path.join(FORMANTSHIFT_DIR, f"{preset}.json"), "r", encoding="utf-8"
-    ) as json_file:
+    preset = os.path.basename(str(preset)).replace("\\", "/")
+    preset_path = ensure_within_root(
+        os.path.join(FORMANTSHIFT_DIR, f"{preset}.json"), FORMANTSHIFT_DIR
+    )
+    with open(preset_path, "r", encoding="utf-8") as json_file:
         values = json.load(json_file)
     return (
         values["formant_qfrency"],
@@ -186,7 +190,12 @@ def get_presets_data(pitch, index_rate, rms_mix_rate, protect):
 
 def export_presets_button(preset_name, pitch, index_rate, rms_mix_rate, protect):
     if preset_name:
-        file_path = os.path.join(PRESETS_DIR, f"{preset_name}.json")
+        preset_name = os.path.basename(str(preset_name)).replace("\\", "/")
+        if not preset_name:
+            return "Export cancelled: invalid preset name"
+        file_path = ensure_within_root(
+            os.path.join(PRESETS_DIR, f"{preset_name}.json"), PRESETS_DIR
+        )
         presets_data = get_presets_data(pitch, index_rate, rms_mix_rate, protect)
         with open(file_path, "w", encoding="utf-8") as json_file:
             json.dump(presets_data, json_file, ensure_ascii=False, indent=4)
@@ -289,9 +298,6 @@ def save_to_wav2(upload_audio):
     file_path = upload_audio
     formated_name = format_title(os.path.basename(file_path))
     target_path = os.path.join(audio_root_relative, formated_name)
-
-    if os.path.exists(target_path):
-        os.remove(target_path)
 
     shutil.copy(file_path, target_path)
     return target_path, output_path_fn(target_path)
@@ -464,6 +470,7 @@ def refresh_embedders_folders():
 def get_speakers_id(model):
     if model:
         try:
+            model = validate_ui_path(model)
             model_data = torch.load(
                 os.path.join(now_dir, model), map_location="cpu", weights_only=True
             )
@@ -1742,10 +1749,10 @@ def inference_tab():
                     export_presets_button,
                     inputs=[
                         preset_name_input,
-                        pitch,
-                        index_rate,
+                        pitch_batch,
+                        index_rate_batch,
                         rms_mix_rate_batch,
-                        protect,
+                        protect_batch,
                     ],
                     outputs=[],
                 )
@@ -1923,7 +1930,7 @@ def inference_tab():
     )
     formant_shifting_batch.change(
         fn=toggle_visible_formant_shifting,
-        inputs=[formant_shifting],
+        inputs=[formant_shifting_batch],
         outputs=[
             formant_row_batch,
             formant_preset_batch,
