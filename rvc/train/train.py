@@ -171,6 +171,18 @@ if vocoder == "BigVGAN":
     config.data.hop_length = 256
     config.train.segment_size = 8192
 
+# The official Vocos 24 kHz checkpoint (charactr/vocos-mel-24khz) is built on
+# a hop length of 256, so at 24 kHz the decoder must use the same hop to
+# match the pretrained architecture (upsample_rates only define the hop).
+elif vocoder == "Vocos" and sample_rate == 24000:
+    print(
+        "Vocos 24 kHz: using the official Vocos decoder architecture "
+        "(hop 256, n_fft 1024) so the pretrained checkpoint fits 1:1."
+    )
+    config.model.upsample_rates = [4, 4, 2, 2, 2, 2]
+    config.data.hop_length = 256
+    config.train.segment_size = 8192
+
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = True
 
