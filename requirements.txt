@@ -5,7 +5,9 @@ tqdm==4.68.4
 wget==3.2
 
 faiss-cpu==1.14.3
+scikit-learn==1.7.2
 librosa==0.11.0
+resampy==0.4.3
 scipy==1.18.0
 soundfile==0.14.0
 noisereduce==3.0.3
@@ -18,16 +20,22 @@ torchaudio==2.11.0
 nnAudio==0.3.4
 torchcrepe==0.0.24
 torchfcpe==0.0.4
+local-attention==1.11.2
 einops==0.8.2
 transformers==5.13.1
+huggingface_hub==1.27.0
 
 matplotlib==3.11.0
 tensorboard==2.21.0
 gradio==6.20.0
+fastapi==0.141.1
+httpx==0.28.1
 
 edge-tts==7.2.8
 pypresence==4.6.2
 beautifulsoup4==4.15.0
+pandas==3.0.5
+regex==2026.7.19
 sounddevice==0.5.5
 webrtcvad-wheels==2.0.14
 psutil==7.2.2
