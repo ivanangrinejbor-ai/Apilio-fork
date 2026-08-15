@@ -185,3 +185,47 @@ class MultiScaleMelSpectrogramLoss(torch.nn.Module):
             fake_logmels = torch.log(fake_mels.clamp(min=1e-5)) / self.log_base
             loss += self.loss_fn(real_logmels, fake_logmels)
         return loss
+
+
+def spectral_convergence_loss(
+    y: torch.Tensor,
+    y_hat: torch.Tensor,
+    n_fft: int,
+    hop_length: int,
+    win_length: int,
+) -> torch.Tensor:
+    """
+    Compute the spectral convergence loss between real and generated waveforms.
+
+    Args:
+        y (torch.Tensor): Real waveform of shape (B, 1, T).
+        y_hat (torch.Tensor): Generated waveform of shape (B, 1, T).
+        n_fft (int): Size of Fourier transform.
+        hop_length (int): Hop length between STFT frames.
+        win_length (int): Window size.
+
+    Returns:
+        torch.Tensor: Per-sample spectral convergence loss of shape (B,).
+    """
+    window = torch.hann_window(win_length, device=y.device, dtype=torch.float32)
+    spec_real = torch.stft(
+        y.float().squeeze(1),
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        window=window,
+        return_complex=True,
+    )
+    spec_fake = torch.stft(
+        y_hat.float().squeeze(1),
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        window=window,
+        return_complex=True,
+    )
+    mag_real = spec_real.abs()
+    mag_fake = spec_fake.abs()
+    return (mag_fake - mag_real).norm(dim=(1, 2)) / mag_real.norm(dim=(1, 2)).clamp_min(
+        1e-5
+    )

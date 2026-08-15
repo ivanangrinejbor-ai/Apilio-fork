@@ -208,9 +208,9 @@ class ISTFTHead(nn.Module):
         mag, p = x.chunk(2, dim=1)
         mag = torch.exp(mag)
         mag = torch.clip(mag, max=1e2)
-        S = mag * torch.complex(torch.cos(p), torch.sin(p))
+        S = mag.float() * torch.complex(torch.cos(p).float(), torch.sin(p).float())
         audio = self.istft(S)
-        return audio
+        return audio.to(x.dtype)
 
 
 class VocosDecoder(nn.Module):

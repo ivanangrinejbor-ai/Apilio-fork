@@ -26,6 +26,7 @@ from rvc.train.losses import discriminator_loss, feature_loss, generator_loss, k
 from rvc.train.mel_processing import (
     MultiScaleMelSpectrogramLoss,
     mel_spectrogram_torch,
+    spectral_convergence_loss,
     spec_to_mel_torch,
 )
 from rvc.train.utils import (
@@ -72,9 +73,12 @@ d_step_per_g_step = 1
 multiscale_mel_loss = False
 bf16_adamw = False
 disc_version = "v2"
+c_sc = 10.0
 
 if vocoder == "RefineGAN":
     disc_version = "v3"
+    multiscale_mel_loss = True
+elif vocoder == "Vocos":
     multiscale_mel_loss = True
 
 current_dir = os.getcwd()
@@ -183,6 +187,16 @@ def main():
             os._exit(1)
     else:
         print("No wav file found.")
+
+    filelist_path = os.path.join(experiment_dir, "filelist.txt")
+    if not os.path.exists(filelist_path) or os.path.getsize(filelist_path) == 0:
+        print(
+            "Error: The training filelist is empty. The feature extraction step likely "
+            "failed (missing rmvpe.pt/fcpe.pt predictors or embedder models). Re-run "
+            "'Extract Features' after downloading the prerequisites.",
+            flush=True,
+        )
+        os._exit(1)
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -343,7 +357,8 @@ def run(
     # Validations
     if len(train_loader) < 3:
         print(
-            "Not enough data present in the training set. Perhaps you forgot to slice the audio files in preprocess?"
+            "Not enough data present in the training set. Perhaps you forgot to slice the audio files in preprocess?",
+            flush=True,
         )
         os._exit(2333333)
 
@@ -720,10 +735,26 @@ def train_and_evaluate(
                     config.data.mel_fmax,
                 )
                 loss_mel = fn_mel_loss(wave_mel, y_hat_mel) * config.train.c_mel
+
+            if vocoder == "Vocos":
+                loss_sc = (
+                    spectral_convergence_loss(
+                        wave,
+                        y_hat,
+                        n_fft=config.data.hop_length * 4,
+                        hop_length=config.data.hop_length,
+                        win_length=config.data.hop_length * 4,
+                    ).mean()
+                    * c_sc
+                )
+            else:
+                loss_sc = None
             loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * config.train.c_kl
             loss_fm = feature_loss(fmap_r, fmap_g)
             loss_gen, _ = generator_loss(y_d_hat_g)
             loss_gen_all = loss_gen + loss_fm + loss_mel + loss_kl
+            if loss_sc is not None:
+                loss_gen_all = loss_gen_all + loss_sc
 
             if loss_gen_all < lowest_value["value"]:
                 lowest_value = {
