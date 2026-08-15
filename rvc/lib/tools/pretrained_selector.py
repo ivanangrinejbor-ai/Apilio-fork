@@ -1,6 +1,24 @@
 import os
 import sys
 
+# RVC v2 base pretrain providing the pretrained front-end (enc_p/enc_q/flow/emb_g)
+# merged into decoder-only vocoder pretrains (BigVGAN, Vocos). The 32 kHz base
+# uses n_fft 1024 (513 spec bins), matching the 24 kHz BigVGAN build; the
+# front-end itself is sample-rate agnostic.
+BASE_PRETRAIN_REPO = "lj1995/VoiceConversionWebUI"
+BASE_PRETRAIN_FILE = "pretrained_v2/f0G32k.pth"
+
+
+def _old_style_weight_norm_key(key):
+    """Map an RVC base pretrain key (old-style torch weight_norm) onto the
+    parametrizations naming used by this project: weight_g -> original0,
+    weight_v -> original1 (same convention as convert_bigvgan)."""
+    if key.endswith("weight_v"):
+        return key[: -len("weight_v")] + "parametrizations.weight.original1"
+    if key.endswith("weight_g"):
+        return key[: -len("weight_g")] + "parametrizations.weight.original0"
+    return key
+
 
 def _save_discriminator_pretrain(path, version):
     """Save a randomly initialized MultiPeriodDiscriminator as a D pretrain."""
@@ -72,13 +90,75 @@ def _auto_download_convert_d(path_d, version):
         _save_discriminator_pretrain(path_d, version)
 
 
+def _merge_base_encoder_flow(path_g):
+    """Replace the randomly initialized RVC front-end of a converted decoder
+    pretrain with the RVC v2 base pretrain weights.
+
+    The official vocoder checkpoints (BigVGAN, Vocos) only cover the decoder;
+    the encoder/flow/speaker embedding stay random, which makes fine-tuning on
+    small datasets slow. The RVC v2 base pretrain (pretrained_v2/f0G32k.pth)
+    provides the pretrained front-end (enc_p/enc_q/flow/emb_g). Its HiFi-GAN
+    decoder weights are discarded in favor of the official decoder already
+    present in path_g, and old-style weight_norm keys are remapped to the
+    parametrizations naming used by this project.
+
+    Non-fatal: on any failure the decoder-only pretrain is kept.
+    """
+    try:
+        import torch
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        return
+
+    try:
+        base_path = hf_hub_download(BASE_PRETRAIN_REPO, BASE_PRETRAIN_FILE)
+    except (SystemExit, Exception) as error:
+        print(f"Failed to download the RVC base pretrain (front-end stays random): {error}")
+        return
+
+    try:
+        base = torch.load(base_path, map_location="cpu", weights_only=True)
+        base_state = base.get("model", base)
+        converted = torch.load(path_g, map_location="cpu", weights_only=True)
+        converted_state = converted["model"]
+
+        kept, skipped = [], []
+        for key, value in base_state.items():
+            if key.startswith("dec."):
+                continue
+            target = _old_style_weight_norm_key(key)
+            if target not in converted_state:
+                skipped.append(key)
+                continue
+            if tuple(value.shape) != tuple(converted_state[target].shape):
+                skipped.append(key)
+                continue
+            converted_state[target] = value
+            kept.append(target)
+
+        for prefix in ("enc_p.", "enc_q.", "flow.", "emb_g."):
+            if not any(k.startswith(prefix) for k in kept):
+                print(f"Base pretrain has no {prefix}* weights; front-end stays random.")
+                return
+
+        torch.save(converted, path_g)
+        print(
+            f"Merged RVC base front-end into the pretrainG checkpoint: "
+            f"{len(kept)} tensors ({len(skipped)} skipped)."
+        )
+    except (SystemExit, Exception) as error:
+        print(f"Failed to merge the base pretrain front-end: {error}")
+
+
 def _auto_download_convert(vocoder, path_g, path_d):
     """Download the official checkpoint and convert it into RVC pretrain format.
 
     Used for vocoders whose pretrain files are not bundled (BigVGAN, Vocos at
     24 kHz). Builds the G pretrain from the official weights and a matching
     D pretrain (ported from the official discriminators for BigVGAN, randomly
-    initialized for Vocos). Any failure is reported but does not abort
+    initialized for Vocos). The RVC base front-end (encoder/flow/emb_g) is
+    merged in afterwards so fine-tuning starts from a pretrained front-end
+    instead of random weights. Any failure is reported but does not abort
     training.
     """
     try:
@@ -99,12 +179,14 @@ def _auto_download_convert(vocoder, path_g, path_d):
             from rvc.lib.tools.convert_bigvgan import convert
 
             convert(source, path_g, spk_embed_dim=109)
+            _merge_base_encoder_flow(path_g)
         elif vocoder == "Vocos" and not os.path.exists(path_g):
             print("Vocos 24 kHz pretrain not found, converting the charactr checkpoint...")
             source = hf_hub_download("charactr/vocos-mel-24khz", "pytorch_model.bin")
             from rvc.lib.tools.convert_vocos import convert
 
             convert(source, path_g, spk_embed_dim=109)
+            _merge_base_encoder_flow(path_g)
 
         if not os.path.exists(path_d) and os.path.exists(path_g):
             if vocoder == "BigVGAN":
