@@ -293,10 +293,12 @@ class BigVGANGenerator(nn.Module):
         gin_channels,
         sample_rate,
         harmonic_num,
+        use_tanh_at_final=False,
     ):
         super().__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
+        self.use_tanh_at_final = use_tanh_at_final
         self.f0_upsample = nn.Upsample(scale_factor=np.prod(upsample_rates))
         self.m_source = SourceModuleHnNSF(sample_rate, harmonic_num)
 
@@ -362,8 +364,10 @@ class BigVGANGenerator(nn.Module):
             )
 
         self.act_post = AntiAliasActivation(channel)
+        # Official BigVGAN-v2 checkpoints are trained with use_bias_at_final
+        # false, so the final conv has no bias term.
         self.conv_post = weight_norm(
-            nn.Conv1d(channel, 1, kernel_size=7, stride=1, padding=3)
+            nn.Conv1d(channel, 1, kernel_size=7, stride=1, padding=3, bias=False)
         )
 
         if gin_channels != 0:
@@ -388,7 +392,10 @@ class BigVGANGenerator(nn.Module):
 
             x = xs / self.num_kernels
 
-        return self.conv_post(self.act_post(x)).tanh()
+        x = self.conv_post(self.act_post(x))
+        # Official BigVGAN-v2 (use_tanh_at_final false) does not apply tanh;
+        # the pretrained decoder expects an unconstrained output.
+        return x.tanh() if self.use_tanh_at_final else x
 
     def remove_weight_norm(self):
         _remove_weight_norm(self.conv_pre)

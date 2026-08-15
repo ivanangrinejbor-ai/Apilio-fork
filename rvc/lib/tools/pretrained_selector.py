@@ -9,7 +9,10 @@ def _save_discriminator_pretrain(path, version):
     import torch
 
     net_d = MultiPeriodDiscriminator(
-        use_spectral_norm=False, checkpointing=False, version=version
+        use_spectral_norm=False,
+        checkpointing=False,
+        version=version,
+        use_cqtd=(version == "v3"),
     )
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     torch.save(

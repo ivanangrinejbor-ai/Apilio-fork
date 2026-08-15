@@ -15,6 +15,7 @@ soxr==1.1.0
 
 torch==2.11.0
 torchaudio==2.11.0
+nnAudio==0.3.4
 torchcrepe==0.0.24
 torchfcpe==0.0.4
 einops==0.8.2

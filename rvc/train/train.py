@@ -473,6 +473,7 @@ def run(
         config.model.use_spectral_norm,
         checkpointing=checkpointing,
         version=disc_version,
+        use_cqtd=(vocoder == "BigVGAN"),
     )
 
     if torch.cuda.is_available():

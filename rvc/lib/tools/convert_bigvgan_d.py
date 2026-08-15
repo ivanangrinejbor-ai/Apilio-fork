@@ -49,10 +49,13 @@ from rvc.lib.algorithm.discriminators import MultiPeriodDiscriminator
 
 # Index offsets into the project's MultiPeriodDiscriminator.
 # Project layout (v3): 0 = DiscriminatorS, 1..5 = DiscriminatorP (periods
-# [2,3,5,7,11]), 6..8 = DiscriminatorR. The official MPD holds only the 5
-# DiscriminatorP modules, the official MRD holds the 3 DiscriminatorR modules.
+# [2,3,5,7,11]), 6..8 = DiscriminatorR, 9..11 = DiscriminatorCQT (use_cqtd).
+# The official MPD holds only the 5 DiscriminatorP modules, the official v1
+# MRD holds the 3 DiscriminatorR modules, the official v2 "mrd" holds the 3
+# DiscriminatorCQT modules.
 MPD_INDEX_OFFSET = 1
 MRD_INDEX_OFFSET = 6
+CQTD_INDEX_OFFSET = 9
 
 
 def _remap_weight_norm(rest: str) -> str:
@@ -82,7 +85,10 @@ def transfer(official_sub: dict, project_state: dict, mapped_keys: set, offset: 
     mapped = 0
     skipped = 0
     for key, value in official_sub.items():
-        if not key.startswith("discriminators."):
+        if not key.startswith("discriminators.") or "cqt_transform." in key or ".resample." in key:
+            # cqt_transform buffers and torchaudio Resample kernels are
+            # deterministic (same parameters) and rebuilt by the project
+            # module, so they are not transferred.
             skipped += 1
             continue
         target = official_to_project(key, offset)
@@ -110,7 +116,7 @@ def load_official_state(path: str) -> dict:
 
 def convert(input_v2: str, input_v1: str | None, output_path: str, version: str) -> None:
     if version == "v2":
-        print("NOTE: version 'v2' has no DiscriminatorR modules; MRD transfer is skipped.")
+        print("NOTE: version 'v2' has no DiscriminatorR/CQT modules; MRD transfer is skipped.")
 
     print(f"Loading official BigVGAN-v2 checkpoint: {input_v2}")
     ckpt_v2 = load_official_state(input_v2)
@@ -120,7 +126,10 @@ def convert(input_v2: str, input_v1: str | None, output_path: str, version: str)
 
     print(f"Building RVC MultiPeriodDiscriminator (version={version})...")
     net_d = MultiPeriodDiscriminator(
-        use_spectral_norm=False, checkpointing=False, version=version
+        use_spectral_norm=False,
+        checkpointing=False,
+        version=version,
+        use_cqtd=(version == "v3"),
     )
     project_state = net_d.state_dict()
     mapped_keys = set()
@@ -147,6 +156,19 @@ def convert(input_v2: str, input_v1: str | None, output_path: str, version: str)
                 skipped_total += skipped2
         else:
             print(f"NOTE: v1 checkpoint not found ({input_v1}); DiscriminatorR stays random.")
+
+    if version == "v3":
+        cqtd = ckpt_v2.get("mrd")
+        if not isinstance(cqtd, dict):
+            print(
+                f"NOTE: v2 checkpoint has no 'mrd' (CQTD) state dict "
+                f"({sorted(ckpt_v2)[:8]}); DiscriminatorCQT stays random."
+            )
+        else:
+            print("Transferring CQTD (3x DiscriminatorCQT, convs only)...")
+            mapped3, skipped3 = transfer(cqtd, project_state, mapped_keys, CQTD_INDEX_OFFSET)
+            mapped += mapped3
+            skipped_total += skipped3
 
     missing = sorted(set(project_state) - mapped_keys)
     print(f"Transferred {len(mapped_keys)} tensors ({skipped_total} non-discriminator keys skipped).")
