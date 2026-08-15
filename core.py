@@ -21,6 +21,7 @@ from rvc.lib.tools.prerequisites_download import prequisites_download_pipeline
 from rvc.lib.utils import ensure_within_root, format_title, validate_ui_path
 from rvc.train.process.model_blender import model_blender
 from rvc.train.process.model_information import model_information
+from rvc.train.process.export_onnx import export_onnx as export_onnx_model
 
 python = sys.executable
 
@@ -64,6 +65,7 @@ def run_infer_script(
     pth_path: str,
     index_path: str,
     split_audio: bool,
+    split_audio_method: str,
     f0_autotune: bool,
     f0_autotune_strength: float,
     proposed_pitch: bool,
@@ -132,6 +134,7 @@ def run_infer_script(
         "protect": protect,
         "f0_method": f0_method,
         "split_audio": split_audio,
+        "split_audio_method": split_audio_method,
         "f0_autotune": f0_autotune,
         "f0_autotune_strength": f0_autotune_strength,
         "proposed_pitch": proposed_pitch,
@@ -201,6 +204,7 @@ def run_batch_infer_script(
     pth_path: str,
     index_path: str,
     split_audio: bool,
+    split_audio_method: str,
     f0_autotune: bool,
     f0_autotune_strength: float,
     proposed_pitch: bool,
@@ -269,6 +273,7 @@ def run_batch_infer_script(
         "protect": protect,
         "f0_method": f0_method,
         "split_audio": split_audio,
+        "split_audio_method": split_audio_method,
         "f0_autotune": f0_autotune,
         "f0_autotune_strength": f0_autotune_strength,
         "proposed_pitch": proposed_pitch,
@@ -340,6 +345,7 @@ def run_tts_script(
     pth_path: str,
     index_path: str,
     split_audio: bool,
+    split_audio_method: str,
     f0_autotune: bool,
     f0_autotune_strength: float,
     proposed_pitch: bool,
@@ -598,6 +604,8 @@ def run_train_script(
     vocoder: str = "HiFi-GAN",
     checkpointing: bool = False,
     shutdown_check: bool = False,
+    early_stop_epochs: int = 0,
+    pitch_aug: bool = False,
 ):
     model_name = format_title(os.path.basename(model_name))
     if not model_name:
@@ -637,6 +645,8 @@ def run_train_script(
                 cleanup,
                 vocoder,
                 checkpointing,
+                early_stop_epochs,
+                pitch_aug,
             ],
         ),
     ]
@@ -692,6 +702,15 @@ def run_model_information_script(pth_path: str):
     pth_path = validate_ui_path(pth_path)
     print(model_information(pth_path))
     return model_information(pth_path)
+
+
+# ONNX export
+def run_export_onnx_script(pth_path: str, frames: int = 512):
+    try:
+        export_onnx_model(pth_path, frames=frames)
+    except Exception as error:
+        print(f"An error occurred exporting ONNX model: {error}")
+        return None
 
 
 # Model blender
@@ -1334,6 +1353,20 @@ def index(**kwargs):
 def model_information(**kwargs):
     """Display information about a trained model."""
     run_model_information_script(kwargs["pth_path"])
+
+
+@cli.command()
+@click.option("--pth-path", required=True, help="Path to the .pth model file.")
+@click.option(
+    "--frames",
+    default=512,
+    show_default=True,
+    help="Fixed audio length of the exported model in frames "
+    "(1 frame = hop_size samples). The model only accepts this exact length.",
+)
+def export_onnx(**kwargs):
+    """Export a trained model to ONNX (fixed length, dynamic batch)."""
+    run_export_onnx_script(kwargs["pth_path"], kwargs["frames"])
 
 
 @cli.command()

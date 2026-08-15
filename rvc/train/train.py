@@ -65,6 +65,8 @@ cache_data_in_gpu = _strtobool(sys.argv[11])
 cleanup = _strtobool(sys.argv[12])
 vocoder = sys.argv[13]
 checkpointing = _strtobool(sys.argv[14])
+early_stop_epochs = int(sys.argv[15]) if len(sys.argv) > 15 else 0
+pitch_aug = _strtobool(sys.argv[16]) if len(sys.argv) > 16 else False
 # experimental settings
 randomized = True
 d_lr_coeff = 1.0
@@ -120,6 +122,7 @@ except FileNotFoundError:
     sys.exit(1)
 
 config.data.training_files = os.path.join(experiment_dir, "filelist.txt")
+config.data.pitch_aug = pitch_aug
 
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = True
@@ -859,6 +862,10 @@ def train_and_evaluate(
 
         lr = optim_g.param_groups[0]["lr"]
 
+        mel_rmse = torch.sqrt(
+            torch.mean((y_mel - y_hat_mel) ** 2)
+        ).item()
+
         scalar_dict = {
             "loss/g/total": loss_gen_all,
             "loss/d/adv": loss_disc,
@@ -869,6 +876,7 @@ def train_and_evaluate(
             "loss/g/fm": loss_fm,
             "loss/g/mel": loss_mel,
             "loss/g/kl": loss_kl,
+            "quality/mel_rmse": mel_rmse,
         }
 
         image_dict = {
@@ -946,7 +954,17 @@ def train_and_evaluate(
                     )
                 )
 
+        # Save best checkpoint when the lowest generator loss was updated this epoch
+        if epoch > 1 and lowest_value["epoch"] == epoch:
+            best_model_path = os.path.join(experiment_dir, f"{model_name}_best.pth")
+            if not os.path.exists(best_model_path):
+                model_add.append(best_model_path)
+
         # Check completion
+        early_stop = (
+            early_stop_epochs > 0
+            and epoch - lowest_value["epoch"] >= early_stop_epochs
+        )
         if epoch >= custom_total_epoch:
             lowest_value_rounded = round(lowest_value["value"].detach().item(), 3)
             print(
@@ -961,6 +979,23 @@ def train_and_evaluate(
                     experiment_dir, f"{model_name}_{epoch}e_{global_step}s.pth"
                 )
             )
+            done = True
+        elif early_stop:
+            lowest_value_rounded = round(lowest_value["value"].detach().item(), 3)
+            print(
+                f"Early stopping triggered: no improvement for {early_stop_epochs} epochs "
+                f"(lowest generator loss {lowest_value_rounded} at epoch {lowest_value['epoch']})."
+            )
+            # Final model is the best checkpoint
+            model_add.append(
+                os.path.join(
+                    experiment_dir, f"{model_name}_{epoch}e_{global_step}s.pth"
+                )
+            )
+            if lowest_value["epoch"] == epoch:
+                model_add.append(
+                    os.path.join(experiment_dir, f"{model_name}_best.pth")
+                )
             done = True
 
         # Clean-up old best epochs

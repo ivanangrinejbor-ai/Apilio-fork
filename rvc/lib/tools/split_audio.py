@@ -26,6 +26,48 @@ def process_audio(audio, sr=16000, silence_thresh=-60, min_silence_len=250):
     return audio_segments, intervals
 
 
+def process_audio_silero(audio, sr=16000, min_silence_len=250, speech_pad_ms=30):
+    """
+    Splits an audio signal into speech segments using Silero VAD.
+
+    Parameters:
+    - audio (np.ndarray): The audio signal to split.
+    - sr (int): The sample rate of the input audio (default is 16000).
+    - min_silence_len (int): Minimum silence duration between segments (default 250ms).
+    - speech_pad_ms (int): Padding around speech in milliseconds (default 30ms).
+
+    Returns:
+    - list of np.ndarray: A list of audio segments.
+    - np.ndarray: The intervals where the audio was split.
+    """
+    import torch
+    from silero_vad import get_speech_timestamps, load_silero_vad
+
+    vad_model = load_silero_vad()
+    if sr != 16000:
+        audio_16k = librosa.resample(
+            audio, orig_sr=sr, target_sr=16000, res_type="kaiser_fast"
+        )
+    else:
+        audio_16k = audio
+    speech_timestamps = get_speech_timestamps(
+        torch.from_numpy(audio_16k).float(),
+        vad_model,
+        sampling_rate=16000,
+        min_silence_duration_ms=min_silence_len,
+        speech_pad_ms=speech_pad_ms,
+        return_seconds=False,
+    )
+    ratio = sr / 16000
+    intervals = np.array(
+        [[int(ts["start"] * ratio), int(ts["end"] * ratio)] for ts in speech_timestamps],
+        dtype=np.int64,
+    )
+    audio_segments = [audio[start:end] for start, end in intervals]
+
+    return audio_segments, intervals
+
+
 def merge_audio(audio_segments_org, audio_segments_new, intervals, sr_orig, sr_new):
     """
     Merges audio segments back into a single audio signal, filling gaps with silence.

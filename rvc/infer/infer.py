@@ -8,6 +8,8 @@ import logging
 import numpy as np
 import soundfile as sf
 import noisereduce as nr
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
 from pedalboard import (
     Pedalboard,
     Chorus,
@@ -27,7 +29,11 @@ sys.path.append(now_dir)
 
 from rvc.infer.pipeline import Pipeline as VC
 from rvc.lib.utils import load_audio_infer, load_embedding
-from rvc.lib.tools.split_audio import process_audio, merge_audio
+from rvc.lib.tools.split_audio import (
+    process_audio,
+    process_audio_silero,
+    merge_audio,
+)
 from rvc.lib.algorithm.synthesizers import Synthesizer
 from rvc.configs.config import Config
 
@@ -202,6 +208,7 @@ class VoiceConverter:
         protect: float = 0.5,
         hop_length: int = 128,
         split_audio: bool = False,
+        split_audio_method: str = "threshold",
         f0_autotune: bool = False,
         f0_autotune_strength: float = 1,
         embedder_model: str = "contentvec",
@@ -278,7 +285,10 @@ class VoiceConverter:
             self.tgt_sr = resample_sr
 
         if split_audio:
-            chunks, intervals = process_audio(audio, 16000)
+            if split_audio_method == "silero":
+                chunks, intervals = process_audio_silero(audio, 16000)
+            else:
+                chunks, intervals = process_audio(audio, 16000)
             print(f"Audio split into {len(chunks)} chunks for processing.")
         else:
             chunks = []
@@ -388,17 +398,36 @@ class VoiceConverter:
                 )
             ]
             print(f"Detected {len(audio_files)} audio files for inference.")
-            for a in audio_files:
-                new_input = os.path.join(audio_input_paths, a)
-                new_output = os.path.splitext(a)[0] + "_output.wav"
+
+            def convert_one(file):
+                new_input = os.path.join(audio_input_paths, file)
+                new_output = os.path.splitext(file)[0] + "_output.wav"
                 new_output = os.path.join(audio_output_path, new_output)
                 if os.path.exists(new_output):
-                    continue
+                    return None
                 self.convert_audio(
                     audio_input_path=new_input,
                     audio_output_path=new_output,
                     **kwargs,
                 )
+                return file
+
+            pending = [f for f in audio_files]
+            if len(pending) <= 1:
+                for file in pending:
+                    convert_one(file)
+            else:
+                workers = min(4, len(pending))
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(convert_one, f): f for f in pending
+                    }
+                    for future in tqdm(
+                        as_completed(futures),
+                        total=len(futures),
+                        desc="Converting batch",
+                    ):
+                        future.result()  # propagates worker exceptions
             print(f"Conversion completed at '{audio_input_paths}'.")
             elapsed_time = time.time() - start_time
             print(f"Batch conversion completed in {elapsed_time:.2f} seconds.")

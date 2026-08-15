@@ -174,9 +174,11 @@ def model_download_pipeline(url: str):
 
 def handle_extraction_process():
     extract_folder_path = ""
+    files_found = False
     for filename in os.listdir(zips_path):
+        zipfile_path = os.path.join(zips_path, filename)
         if filename.endswith(".zip"):
-            zipfile_path = os.path.join(zips_path, filename)
+            files_found = True
             model_name = format_title(os.path.basename(zipfile_path).split(".zip")[0])
             extract_folder_path = os.path.join("logs", os.path.normpath(model_name))
             success = extract(zipfile_path, extract_folder_path)
@@ -187,8 +189,15 @@ def handle_extraction_process():
             else:
                 print(f"Error downloading {model_name}")
                 return "Error"
-    if not extract_folder_path:
-        print("Zip file was not found.")
+        elif filename.endswith(".pth") or filename.endswith(".index"):
+            files_found = True
+            model_name = format_title(os.path.basename(filename).split(".")[0])
+            extract_folder_path = os.path.join("logs", os.path.normpath(model_name))
+            os.makedirs(extract_folder_path, exist_ok=True)
+            shutil.move(zipfile_path, os.path.join(extract_folder_path, filename))
+            print(f"Model {model_name} downloaded!")
+    if not files_found:
+        print("No model file (.zip, .pth or .index) was found.")
         return "Error"
     return search_pth_index(extract_folder_path)
 

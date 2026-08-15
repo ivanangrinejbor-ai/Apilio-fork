@@ -8,6 +8,7 @@ import gradio as gr
 
 from assets.i18n.i18n import I18nAuto
 from core import (
+    run_export_onnx_script,
     run_extract_script,
     run_index_script,
     run_preprocess_script,
@@ -729,6 +730,28 @@ def train_tab():
                         value=False,
                         interactive=True,
                     )
+                    early_stop_epochs = gr.Slider(
+                        label=i18n("Early stop patience (epochs)"),
+                        info=i18n(
+                            "Stop training if the generator loss does not improve for this many epochs. "
+                            "Set to 0 to disable. The best checkpoint is saved as {model_name}_best.pth."
+                        ),
+                        minimum=0,
+                        maximum=100,
+                        value=0,
+                        step=1,
+                        interactive=True,
+                    )
+                    pitch_aug = gr.Checkbox(
+                        label=i18n("Pitch Augmentation"),
+                        info=i18n(
+                            "Randomly shifts pitch by +/-2 semitones per sample (audio resampled, "
+                            "f0 adjusted to stay in sync). Improves robustness to pitch variation "
+                            "at the cost of slower data loading."
+                        ),
+                        value=False,
+                        interactive=True,
+                    )
             with gr.Row():
                 custom_pretrained = gr.Checkbox(
                     label=i18n("Custom Pretrained"),
@@ -867,6 +890,27 @@ def train_tab():
                         inputs=[pth_dropdown_export, index_dropdown_export, model_name],
                         outputs=[],
                     )
+            with gr.Column():
+                onnx_frames = gr.Slider(
+                    label=i18n("ONNX length (frames)"),
+                    info=i18n(
+                        "Fixed audio length of the exported ONNX model in frames. "
+                        "1 frame = hop_size samples (e.g. 400 samples at 40kHz). "
+                        "The model only accepts this exact length at runtime."
+                    ),
+                    minimum=1,
+                    maximum=4096,
+                    value=512,
+                    step=1,
+                    visible=True,
+                    interactive=True,
+                )
+                export_onnx_button = gr.Button(i18n("Export ONNX"))
+                export_onnx_button.click(
+                    fn=run_export_onnx_script,
+                    inputs=[pth_dropdown_export, onnx_frames],
+                    outputs=[],
+                )
 
             def toggle_visible(checkbox):
                 return gr.update(visible=checkbox)
@@ -1030,6 +1074,8 @@ def train_tab():
                     vocoder,
                     checkpointing,
                     shutdown_check,
+                    early_stop_epochs,
+                    pitch_aug,
                 ],
                 outputs=[train_output_info],
             )

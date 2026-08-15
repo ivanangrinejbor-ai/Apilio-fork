@@ -97,8 +97,9 @@ def fused_add_tanh_sigmoid_multiply(input_a, input_b, n_channels):
     """
     n_channels_int = n_channels[0]
     in_act = input_a + input_b
-    t_act = torch.tanh(in_act[:, :n_channels_int, :])
-    s_act = torch.sigmoid(in_act[:, n_channels_int:, :])
+    t_act, s_act = torch.chunk(in_act, 2, dim=1)
+    t_act = torch.tanh(t_act)
+    s_act = torch.sigmoid(s_act)
     acts = t_act * s_act
     return acts
 

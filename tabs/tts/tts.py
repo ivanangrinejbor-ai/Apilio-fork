@@ -189,6 +189,17 @@ def tts_tab():
                 value=False,
                 interactive=True,
             )
+            split_audio_method = gr.Radio(
+                label=i18n("Split Method"),
+                info=i18n(
+                    "Silero VAD uses a neural voice-activity detector (slower, more precise). "
+                    "Threshold uses silence-based splitting (fast)."
+                ),
+                choices=["threshold", "silero"],
+                value="threshold",
+                visible=True,
+                interactive=True,
+            )
             autotune = gr.Checkbox(
                 label=i18n("Autotune"),
                 info=i18n(
@@ -454,6 +465,7 @@ def tts_tab():
             model_file,
             index_file,
             split_audio,
+            split_audio_method,
             autotune,
             autotune_strength,
             proposed_pitch,

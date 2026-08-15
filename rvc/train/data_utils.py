@@ -1,4 +1,7 @@
 import os
+import random
+
+import librosa
 import numpy as np
 import torch
 import torch.utils.data
@@ -25,7 +28,64 @@ class TextAudioLoaderMultiNSFsid(torch.utils.data.Dataset):
         self.sample_rate = hparams.sample_rate
         self.min_text_len = getattr(hparams, "min_text_len", 1)
         self.max_text_len = getattr(hparams, "max_text_len", 5000)
+        self.pitch_aug = bool(getattr(hparams, "pitch_aug", False))
         self._filter()
+
+    def _apply_pitch_augmentation(self, wav, pitch, pitchf):
+        """
+        Applies a random pitch shift in semitones to audio and f0 jointly.
+
+        The waveform is resampled (which shifts pitch while preserving formants
+        relatively), the spectrogram is recomputed from the shifted audio, and
+        both discrete pitch bins and continuous f0 are adjusted to stay in sync.
+
+        Args:
+            wav (torch.Tensor): Audio waveform (1, N).
+            pitch (torch.Tensor): Discrete pitch bins (T,).
+            pitchf (torch.Tensor): Continuous f0 values (T,).
+
+        Returns:
+            tuple: (spec, wav, pitch, pitchf) after augmentation.
+        """
+        semitones = random.randint(-2, 2)
+        if semitones == 0:
+            return None
+
+        orig_len = wav.size(1)
+        new_sr = self.sample_rate * 2 ** (semitones / 12)
+        wav_np = librosa.resample(
+            wav.squeeze(0).numpy(),
+            orig_sr=self.sample_rate,
+            target_sr=new_sr,
+            res_type="kaiser_fast",
+        )
+        wav = torch.from_numpy(wav_np).unsqueeze(0)
+        if wav.size(1) < orig_len:
+            wav = torch.nn.functional.pad(wav, (0, orig_len - wav.size(1)))
+        else:
+            wav = wav[:, :orig_len]
+
+        if random.random() < 0.3:
+            wav = wav + torch.randn_like(wav) * 0.001
+
+        spec = spectrogram_torch(
+            wav,
+            self.filter_length,
+            self.hop_length,
+            self.win_length,
+            center=False,
+        )
+        spec = torch.squeeze(spec, 0)
+
+        shift = int(round(semitones * 2))
+        if shift != 0:
+            positive = pitch > 0
+            pitch = pitch.clone()
+            pitch[positive] = (pitch[positive] + shift).clamp(0, 255)
+            pitchf = pitchf * 2 ** (semitones / 12)
+
+        min_len = min(spec.size(1), pitch.size(0))
+        return spec[:, :min_len], wav[:, : min_len * self.hop_length], pitch[:min_len], pitchf[:min_len]
 
     def _filter(self):
         """
@@ -70,6 +130,11 @@ class TextAudioLoaderMultiNSFsid(torch.utils.data.Dataset):
         phone, pitch, pitchf = self.get_labels(phone, pitch, pitchf)
         spec, wav = self.get_audio(file)
         dv = self.get_sid(dv)
+
+        if self.pitch_aug:
+            augmented = self._apply_pitch_augmentation(wav, pitch, pitchf)
+            if augmented is not None:
+                spec, wav, pitch, pitchf = augmented
 
         len_phone = phone.size()[0]
         len_spec = spec.size()[-1]
