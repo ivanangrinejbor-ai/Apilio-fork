@@ -1,4 +1,5 @@
 import os
+import pickle
 import sys
 
 import torch
@@ -30,10 +31,10 @@ def export_onnx(ckpt_path: str, output_dir: str | None = None, frames: int = 512
         raise ValueError("frames must be >= 1")
 
     try:
-        cpt = torch.load(ckpt_path, map_location="cpu")
-    except (UnpicklingError, RuntimeError) as e:
-        raise ValueError(f"Failed to load checkpoint '{ckpt_path}': {e}')
-    if "weight" not in cpt or "config" not in cpt:
+        cpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+    except (pickle.UnpicklingError, EOFError, RuntimeError, ValueError) as e:
+        raise ValueError(f"Failed to load checkpoint '{ckpt_path}': {e}")
+    if not isinstance(cpt, dict) or "weight" not in cpt or "config" not in cpt:
         raise ValueError(f"'{ckpt_path}' is not a valid RVC checkpoint")
 
     sr = cpt.get("sr", cpt["config"][-1])
@@ -62,12 +63,8 @@ def export_onnx(ckpt_path: str, output_dir: str | None = None, frames: int = 512
     phone = torch.randn(1, frames, text_enc_hidden_dim)
     phone_lengths = torch.tensor([frames], dtype=torch.long)
     sid = torch.tensor([0], dtype=torch.long)
-    if use_f0:
-        pitch = torch.randint(0, 256, (1, frames), dtype=torch.long)
-        nsff0 = torch.rand(1, frames)
-    else:
-        pitch = torch.randint(0, 256, (1, frames), dtype=torch.long)
-        nsff0 = torch.rand(1, frames)
+    pitch = torch.randint(0, 256, (1, frames), dtype=torch.long)
+    nsff0 = torch.rand(1, frames)
     args = (phone, phone_lengths, pitch, nsff0, sid)
 
     from torch.export import Dim
