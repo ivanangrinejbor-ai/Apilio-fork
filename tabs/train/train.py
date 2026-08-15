@@ -22,6 +22,14 @@ from rvc.configs.config import (
     max_vram_gpu,
 )
 from rvc.lib.utils import format_title
+from rvc.lib.tools.gdrive import (
+    DEFAULT_FOLDER,
+    begin_connect,
+    check_connection,
+    finish_connect,
+    sync_logs,
+    upload_files,
+)
 from tabs.settings.sections.restart import stop_train
 
 i18n = I18nAuto()
@@ -284,27 +292,65 @@ def export_index(index_path):
 
 # Upload to Google Drive
 def upload_to_google_drive(pth_path, index_path, model_name):
-    if not os.path.exists(os.path.join(models_path, model_name)):
-        return gr.Info("Model folder not found.")
     if not pth_path or not os.path.exists(pth_path):
         return gr.Info(".pth not found.")
     try:
-        zip_path = f"{model_name}.zip"
+        zip_path = os.path.join(now_dir, f"{model_name}.zip")
         gr.Info("Uploading...")
         with zipfile.ZipFile(zip_path, "w") as zipf:
             zipf.write(pth_path, os.path.basename(pth_path))
             if index_path and os.path.exists(index_path):
                 zipf.write(index_path, os.path.basename(index_path))
-        drive_folder = "/content/drive/MyDrive/ApplioExported"
-        os.makedirs(drive_folder, exist_ok=True)
-        dest = os.path.join(drive_folder, zip_path)
-        if os.path.exists(dest):
-            os.remove(dest)
-        shutil.move(zip_path, dest)
+        if os.getenv("COLAB_RELEASE_TAG"):
+            drive_folder = "/content/drive/MyDrive/ApplioExported"
+            os.makedirs(drive_folder, exist_ok=True)
+            dest = os.path.join(drive_folder, zip_path)
+            if os.path.exists(dest):
+                os.remove(dest)
+            shutil.move(zip_path, dest)
+        else:
+            ok, msg = upload_files([zip_path], folder="ApplioExported")
+            os.remove(zip_path)
+            if not ok:
+                return gr.Info(f"Upload failed: {msg}")
         gr.Info("Uploaded.")
     except Exception as error:
         print(f"An error occurred uploading to Google Drive: {error}")
         gr.Info("Upload failed.")
+
+
+def gdrive_status_text():
+    try:
+        ok, msg = check_connection()
+        return msg
+    except Exception as error:
+        return f"Error: {error}"
+
+
+def begin_connect_ui():
+    try:
+        url, msg = begin_connect()
+    except Exception as error:
+        return "", gr.update(visible=False), f"Error: {error}"
+    if url:
+        return url, gr.update(visible=True), msg
+    return "", gr.update(visible=False), msg
+
+
+def finish_connect_ui(code):
+    try:
+        ok, msg = finish_connect(code)
+    except Exception as error:
+        return gr.update(visible=False), f"Error: {error}"
+    return gr.update(visible=False), msg
+
+
+def sync_logs_ui(folder):
+    try:
+        ok, msg = sync_logs(folder=folder, logs_root=os.path.join(now_dir, "logs"))
+        return msg
+    except Exception as error:
+        return f"Error: {error}"
 
 
 def auto_enable_checkpointing():
@@ -752,6 +798,60 @@ def train_tab():
                         value=False,
                         interactive=True,
                     )
+        with gr.Accordion(i18n("Google Drive Backup"), open=False):
+            with gr.Row():
+                gdrive_backup = gr.Checkbox(
+                    label=i18n("Backup checkpoints to Google Drive"),
+                    info=i18n(
+                        "Uploads every saved checkpoint (G_, D_, best, final) to your "
+                        "Google Drive during training. Requires the Google Drive "
+                        "connection below (full access to your Drive)."
+                    ),
+                    value=False,
+                    interactive=True,
+                )
+                gdrive_folder = gr.Textbox(
+                    label=i18n("Drive Folder"),
+                    info=i18n("Destination folder in your Google Drive."),
+                    value=DEFAULT_FOLDER,
+                    interactive=True,
+                )
+            with gr.Row():
+                gdrive_connect_button = gr.Button(i18n("Connect Google Drive"))
+                gdrive_confirm_button = gr.Button(
+                    i18n("Confirm Code"), visible=False
+                )
+                gdrive_sync_button = gr.Button(i18n("Sync Existing Checkpoints"))
+            gdrive_code = gr.Textbox(
+                label=i18n("Verification Code"),
+                info=i18n(
+                    "Open the authorization URL in your browser, log in with full "
+                    "access to your Google Drive, then paste the code here."
+                ),
+                visible=False,
+                interactive=True,
+            )
+            gdrive_status = gr.Textbox(
+                label=i18n("Drive Status"),
+                value=gdrive_status_text(),
+                max_lines=4,
+                interactive=False,
+            )
+            gdrive_connect_button.click(
+                fn=begin_connect_ui,
+                inputs=[],
+                outputs=[gdrive_code, gdrive_confirm_button, gdrive_status],
+            )
+            gdrive_confirm_button.click(
+                fn=finish_connect_ui,
+                inputs=[gdrive_code],
+                outputs=[gdrive_confirm_button, gdrive_status],
+            )
+            gdrive_sync_button.click(
+                fn=sync_logs_ui,
+                inputs=[gdrive_folder],
+                outputs=[gdrive_status],
+            )
             with gr.Row():
                 custom_pretrained = gr.Checkbox(
                     label=i18n("Custom Pretrained"),
@@ -847,12 +947,13 @@ def train_tab():
 
     # Export Model section
     with gr.Accordion(i18n("Export Model"), open=False):
-        if os.getenv("COLAB_RELEASE_TAG"):
-            gr.Markdown(
-                i18n(
-                    "The 'Upload' button packages the model into a .zip file and saves it to the ApplioExported folder in your Google Drive."
-                )
+        gr.Markdown(
+            i18n(
+                "The 'Upload' button packages the model into a .zip file and uploads it "
+                "to the ApplioExported folder in your Google Drive (requires the Google "
+                "Drive connection from the Training section)."
             )
+        )
         with gr.Row():
             with gr.Column():
                 pth_file_export = gr.File(
@@ -887,13 +988,12 @@ def train_tab():
         with gr.Row():
             with gr.Column():
                 refresh_export = gr.Button(i18n("Refresh"))
-                if os.getenv("COLAB_RELEASE_TAG"):
-                    upload_exported = gr.Button(i18n("Upload"))
-                    upload_exported.click(
-                        fn=upload_to_google_drive,
-                        inputs=[pth_dropdown_export, index_dropdown_export, model_name],
-                        outputs=[],
-                    )
+                upload_exported = gr.Button(i18n("Upload"))
+                upload_exported.click(
+                    fn=upload_to_google_drive,
+                    inputs=[pth_dropdown_export, index_dropdown_export, model_name],
+                    outputs=[],
+                )
             with gr.Column():
                 onnx_frames = gr.Slider(
                     label=i18n("ONNX length (frames)"),
@@ -1092,6 +1192,8 @@ def train_tab():
                     shutdown_check,
                     early_stop_epochs,
                     pitch_aug,
+                    gdrive_backup,
+                    gdrive_folder,
                 ],
                 outputs=[train_output_info],
             )

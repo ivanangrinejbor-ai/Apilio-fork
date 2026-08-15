@@ -619,6 +619,8 @@ def run_train_script(
     shutdown_check: bool = False,
     early_stop_epochs: int = 0,
     pitch_aug: bool = False,
+    gdrive_backup: bool = False,
+    gdrive_folder: str = "",
 ):
     model_name = format_title(os.path.basename(model_name))
     if not model_name:
@@ -663,7 +665,11 @@ def run_train_script(
             ],
         ),
     ]
-    result = subprocess.run(command)
+    env = os.environ.copy()
+    if gdrive_backup:
+        env["GDRIVE_UPLOAD"] = "1"
+        env["GDRIVE_FOLDER"] = gdrive_folder or "RVC models"
+    result = subprocess.run(command, env=env)
     if result.returncode != 0:
         return f"Training failed for model {model_name}. Please check the console logs for more details."
 

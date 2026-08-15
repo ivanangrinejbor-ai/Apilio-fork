@@ -1025,6 +1025,18 @@ def train_and_evaluate(
                 os.path.join(experiment_dir, "D_" + checkpoint_suffix),
                 scaler,
             )
+            if os.environ.get("GDRIVE_UPLOAD") == "1":
+                try:
+                    from rvc.lib.tools.gdrive import upload_async
+
+                    upload_async(
+                        [
+                            os.path.join(experiment_dir, "G_" + checkpoint_suffix),
+                            os.path.join(experiment_dir, "D_" + checkpoint_suffix),
+                        ]
+                    )
+                except Exception as e:
+                    print(f"Google Drive backup error: {e}")
             if custom_save_every_weights:
                 model_add.append(
                     os.path.join(
@@ -1094,6 +1106,13 @@ def train_and_evaluate(
                         hps=hps,
                         vocoder=vocoder,
                     )
+            if os.environ.get("GDRIVE_UPLOAD") == "1":
+                try:
+                    from rvc.lib.tools.gdrive import upload_async
+
+                    upload_async(model_add, wait=done)
+                except Exception as e:
+                    print(f"Google Drive backup error: {e}")
 
         if done:
             # Clean-up process IDs from config.json
