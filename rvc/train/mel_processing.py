@@ -224,8 +224,8 @@ def spectral_convergence_loss(
         window=window,
         return_complex=True,
     )
-    mag_real = spec_real.abs()
-    mag_fake = spec_fake.abs()
+    mag_real = torch.view_as_real(spec_real).pow(2).sum(-1).sqrt()
+    mag_fake = torch.view_as_real(spec_fake).pow(2).sum(-1).sqrt()
     return (mag_fake - mag_real).norm(dim=(1, 2)) / mag_real.norm(dim=(1, 2)).clamp_min(
         1e-5
     )
