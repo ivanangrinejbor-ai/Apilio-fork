@@ -8,7 +8,6 @@ import logging
 import numpy as np
 import soundfile as sf
 import noisereduce as nr
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from pedalboard import (
     Pedalboard,
@@ -265,6 +264,11 @@ class VoiceConverter:
 
         self.get_vc(model_path, sid)
 
+        if self.net_g is None or self.vc is None:
+            raise RuntimeError(
+                f"Failed to load the model '{model_path}'. Check that the file is a valid RVC checkpoint."
+            )
+
         start_time = time.time()
         print(f"Converting audio '{audio_input_path}'...")
 
@@ -299,6 +303,9 @@ class VoiceConverter:
                 chunks, intervals = process_audio_silero(audio, 16000)
             else:
                 chunks, intervals = process_audio(audio, 16000)
+            if not chunks:
+                print("No speech detected, processing the audio as a single chunk.")
+                chunks = [audio]
             print(f"Audio split into {len(chunks)} chunks for processing.")
         else:
             chunks = []
@@ -424,27 +431,15 @@ class VoiceConverter:
                 )
                 return file
 
-            pending = [f for f in audio_files]
-            if len(pending) <= 1:
-                for file in pending:
-                    convert_one(file)
-            else:
-                workers = min(4, len(pending))
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = {
-                        executor.submit(convert_one, f): f for f in pending
-                    }
-                    for future in tqdm(
-                        as_completed(futures),
-                        total=len(futures),
-                        desc="Converting batch",
-                    ):
-                        future.result()  # propagates worker exceptions
+            for file in tqdm(audio_files, desc="Converting batch"):
+                convert_one(file)
             print(f"Conversion completed at '{audio_input_paths}'.")
             elapsed_time = time.time() - start_time
             print(f"Batch conversion completed in {elapsed_time:.2f} seconds.")
         finally:
-            os.remove(os.path.join(now_dir, "assets", "infer_pid.txt"))
+            pid_file = os.path.join(now_dir, "assets", "infer_pid.txt")
+            if os.path.exists(pid_file):
+                os.remove(pid_file)
 
     def get_vc(self, weight_root, sid):
         """

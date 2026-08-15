@@ -176,7 +176,9 @@ def _run(key, audio, sr, intensity):
         out = _bandpass(audio, sr, 200, 3500)
         hum = np.sin(2 * np.pi * 50 * t + 0.7) * 0.012
         hiss = rng.standard_normal((audio.shape[0], n)).astype(np.float32) * 0.006
-        return out + (hum[np.newaxis, :] + hiss) * (0.4 + intensity)
+        return (out + (hum[np.newaxis, :] + hiss) * (0.4 + intensity)).astype(
+            np.float32
+        )
     if key == "lowpass":
         return _lowpass(audio, sr, 3500 - 2000 * intensity)
     if key == "highpass":
@@ -272,9 +274,11 @@ def _run(key, audio, sr, intensity):
 
 
 def _mix(signal, noise, level):
-    level = np.clip(level, 0.0, 1.0)
+    level = np.clip(float(level), 0.0, 1.0)
     noise = np.broadcast_to(noise, signal.shape)
-    return (signal * (1 - level) + noise * level).astype(np.float32)
+    return (signal * np.float32(1 - level) + noise * np.float32(level)).astype(
+        np.float32
+    )
 
 
 def _pink_noise(channels, n, rng):
@@ -291,7 +295,8 @@ def _pink_noise(channels, n, rng):
 
 
 def _crackle(channels, n, sr, rng, density=0.05, amp=0.3):
-    channel_impulses = rng.uniform(0, n, size=int(n * density)).astype(int)
+    impulse_count = min(int(n * density), 200000)
+    channel_impulses = rng.uniform(0, n, size=impulse_count).astype(int)
     noise = np.zeros((channels, n), dtype=np.float32)
     decay = np.exp(-np.arange(0, int(0.004 * sr)) * 12.0)
     for pos in channel_impulses:
@@ -327,6 +332,7 @@ def _high_shelf(audio, sr, freq, gain_db):
 def _rbj_shelf(freq, gain_db, sr, low=True):
     import math
 
+    freq = min(freq, sr * 0.49)
     A = 10 ** (gain_db / 40)
     w0 = 2 * math.pi * freq / sr
     alpha = math.sin(w0) / 2 * math.sqrt(2)
@@ -350,13 +356,17 @@ def _rbj_shelf(freq, gain_db, sr, low=True):
 
 
 def _bandpass(audio, sr, low, high):
+    high = min(high, sr * 0.49)
+    low = min(low, high - 1)
     sos = sp_signal.butter(4, [low, high], btype="bandpass", fs=sr, output="sos")
     return sp_signal.sosfilt(sos, audio).astype(np.float32)
 
 
 def _notch(audio, sr, freq, width):
+    low = max(freq - width / 2, 1.0)
+    high = min(freq + width / 2, sr * 0.49)
     sos = sp_signal.butter(
-        2, [freq - width / 2, freq + width / 2], btype="bandstop", fs=sr, output="sos"
+        2, [low, high], btype="bandstop", fs=sr, output="sos"
     )
     return sp_signal.sosfilt(sos, audio).astype(np.float32)
 
@@ -368,14 +378,15 @@ def _vibrato(audio, sr, rate_hz=5.5, depth_st=0.5):
     window = np.hanning(frame).astype(np.float32)
     out = np.zeros_like(audio)
     norm = np.zeros(n, dtype=np.float32)
+    pshift = PitchShift(semitones=0.0)
     for start in range(0, n, hop):
         end = min(start + frame, n)
         seg = audio[:, start:end]
         if seg.shape[1] < frame:
             seg = np.pad(seg, ((0, 0), (0, frame - seg.shape[1])))
         phase = (start / sr) * 2 * np.pi * rate_hz
-        shift = depth_st * np.sin(phase)
-        shifted = PitchShift(semitones=shift)(seg, sr)
+        pshift.semitones = depth_st * np.sin(phase)
+        shifted = pshift(seg, sr)
         k = end - start
         w = window[:k]
         out[:, start:end] += shifted[:, :k] * w

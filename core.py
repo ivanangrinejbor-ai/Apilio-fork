@@ -15,6 +15,7 @@ current_script_directory = os.path.dirname(os.path.realpath(__file__))
 logs_path = os.path.join(current_script_directory, "logs")
 
 from rvc.lib.tools.analyzer import analyze_audio
+from rvc.lib.tools.audio_effects import EFFECTS
 from rvc.lib.tools.launch_tensorboard import launch_tensorboard_pipeline
 from rvc.lib.tools.model_download import model_download_pipeline
 from rvc.lib.tools.prerequisites_download import prequisites_download_pipeline
@@ -995,49 +996,7 @@ def _post_process_opts(func):
         click.option("--delay-mix", type=float, default=0.5),
         click.option(
             "--audio-effect",
-            type=click.Choice(
-                [
-                    "None",
-                    "White Noise",
-                    "Pink Noise",
-                    "Brown Noise",
-                    "Rain",
-                    "Vinyl",
-                    "FNAF Radio",
-                    "FM Radio",
-                    "Walkie-Talkie",
-                    "Telephone",
-                    "Megaphone",
-                    "Muffled",
-                    "Underwater",
-                    "Old TV",
-                    "Lowpass",
-                    "Highpass",
-                    "Notch",
-                    "Bass Boost",
-                    "Treble Boost",
-                    "Tremolo",
-                    "Vibrato",
-                    "Phaser",
-                    "Flanger",
-                    "Auto-Wah",
-                    "Overdrive",
-                    "Fuzz",
-                    "Waveshaper",
-                    "Robot",
-                    "Alien",
-                    "Ghost",
-                    "Reverse",
-                    "Chipmunk",
-                    "Darth Vader",
-                    "Demon",
-                    "Echo Canyon",
-                    "Normalize",
-                    "Mono",
-                    "Stereo Widener",
-                    "Air",
-                ]
-            ),
+            type=click.Choice(EFFECTS),
             default="None",
             help="Apply a preset audio effect.",
         ),
